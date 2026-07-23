@@ -48,7 +48,7 @@ On macOS, if `code` is not found, run **Shell Command: Install 'code' command in
 
 ### 2. Install Code Cat
 
-Build or download `code-cat-0.1.0.vsix`, then either:
+Code Cat is not published to the VS Code Marketplace or a release download yet. Follow [Build and test from source](#build-and-test-from-source) to generate a `code-cat-*.vsix` package, then either:
 
 1. Open the VS Code Extensions view.
 2. Open the `...` menu.
@@ -57,7 +57,7 @@ Build or download `code-cat-0.1.0.vsix`, then either:
 Or install it from a terminal:
 
 ```bash
-code --install-extension ./code-cat-0.1.0.vsix --force
+code --install-extension ./code-cat-*.vsix --force
 ```
 
 After installation, run **Developer: Reload Window** from the Command Palette so the Code Cat activity-bar icon and commands are loaded.
@@ -87,11 +87,34 @@ If the debug session was already running before Code Cat began observing it, sto
 ```bash
 npm install
 npm run check
-npm run smoke:vscode
 npm run package
 ```
 
-Open this repository in VS Code and press `F5`. The extension-development window opens the bundled `examples/python-order-service` workspace. The generated installable package is `code-cat-0.1.0.vsix`.
+Open this repository in VS Code and press `F5`. The extension-development window opens the bundled `examples/python-order-service` workspace. `npm run package` creates a versioned `code-cat-*.vsix` file in the repository root.
+
+The real VS Code smoke test is optional and requires the VS Code application plus the Microsoft Python extensions:
+
+```bash
+npm run smoke:vscode
+```
+
+The runner automatically uses the default macOS Stable application and `~/.vscode/extensions`. For VS Code Insiders, a custom installation, Windows, Linux, or a non-default extensions directory, provide the relevant absolute paths.
+
+macOS or Linux:
+
+```bash
+CODE_CAT_VSCODE_EXECUTABLE="/absolute/path/to/vscode-executable" \
+CODE_CAT_VSCODE_EXTENSIONS_DIR="/absolute/path/to/vscode/extensions" \
+npm run smoke:vscode
+```
+
+Windows PowerShell:
+
+```powershell
+$env:CODE_CAT_VSCODE_EXECUTABLE = "C:\absolute\path\to\Code.exe"
+$env:CODE_CAT_VSCODE_EXTENSIONS_DIR = "$env:USERPROFILE\.vscode\extensions"
+npm run smoke:vscode
+```
 
 `npm run smoke:vscode` launches an isolated Extension Host using the installed VS Code application and explicit Microsoft Python extension dependencies. It verifies activation, linked breakpoint creation and restoration, debugpy startup, real pauses, captured stack frames and variables, native call-stack data, Runtime Map rendering, and Step Over.
 
