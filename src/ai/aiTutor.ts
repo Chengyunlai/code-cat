@@ -53,6 +53,10 @@ export class AiTutor {
     conversation: readonly ChatMessage[],
     token: vscode.CancellationToken,
   ): Promise<TutorQuestionResult> {
+    const immediateAnswer = immediateConversationAnswer(question);
+    if (immediateAnswer) {
+      return { kind: "chat", answer: immediateAnswer };
+    }
     await this.ensureProjectReady();
     const projectContext = await this.projectIndex.promptContext(question);
     const recentConversation = conversation
@@ -254,4 +258,17 @@ function routeInstructions(): readonly string[] {
     "Prefer 2-8 high-value stops: entry boundary, orchestration, domain decision, I/O, and result.",
     "Return one stop when the project is small.",
   ];
+}
+
+function immediateConversationAnswer(question: string): string | undefined {
+  const normalized = question
+    .trim()
+    .replace(/[!！,.，。?？~～]+$/gu, "")
+    .trim();
+  if (/^(?:你好|您好|嗨|哈[喽罗囉]|hello|hi|hey)(?:呀|啊|哦|呢)?$/iu.test(normalized)) {
+    return /^[a-z]/iu.test(normalized)
+      ? "Hi! What would you like to explore?"
+      : "你好！想聊聊什么？";
+  }
+  return undefined;
 }

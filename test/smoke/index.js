@@ -52,7 +52,7 @@ async function run() {
     "the Runtime Map view to resolve",
   );
   await vscode.commands.executeCommand("codeCat.__seedChat");
-  await waitForValue(
+  const renderedChatState = await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
     (state) =>
       state?.chatMessageCount === 2 &&
@@ -60,6 +60,11 @@ async function run() {
       state.runtimeMap.renderedContentMode === "chat" &&
       state.runtimeMap.scriptError === undefined,
     "the Runtime Map to render a chat exchange",
+  );
+  assert.equal(
+    renderedChatState.runtimeMap.renderedChatRoleLabelCount,
+    0,
+    "chat turns must not render floating visible role labels",
   );
   await vscode.commands.executeCommand("codeCat.__seedTutorError");
   await waitForValue(
@@ -328,14 +333,24 @@ async function testRoutePreflight() {
       "an unusable project must fail before spending a model request",
     );
 
+    let greetingReadinessChecks = 0;
+    let greetingIndexRequests = 0;
+    let greetingModelRequests = 0;
     const greetingTutor = new AiTutor(
       {
-        readinessIssue: async () => undefined,
-        promptContext: async () => "Python files (1):\napp.py\n\nSymbols (3 indexed; 3 shown):",
+        readinessIssue: async () => {
+          greetingReadinessChecks += 1;
+          return undefined;
+        },
+        promptContext: async () => {
+          greetingIndexRequests += 1;
+          return "Python files (1):\napp.py\n\nSymbols (3 indexed; 3 shown):";
+        },
         resolveFile: async () => undefined,
       },
       {
         request: async () => {
+          greetingModelRequests += 1;
           return JSON.stringify({ kind: "chat", message: "你好！想聊聊什么？" });
         },
       },
@@ -344,6 +359,9 @@ async function testRoutePreflight() {
       await greetingTutor.answerQuestion("你好", [], cancellation.token),
       { kind: "chat", answer: "你好！想聊聊什么？" },
     );
+    assert.equal(greetingReadinessChecks, 0, "a greeting must not inspect the project");
+    assert.equal(greetingIndexRequests, 0, "a greeting must not build project context");
+    assert.equal(greetingModelRequests, 0, "a greeting must not wait for the model");
 
     const folder = vscode.workspace.workspaceFolders?.[0];
     assert.ok(folder, "the route-intent test needs the smoke workspace");

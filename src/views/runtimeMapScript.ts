@@ -79,6 +79,7 @@ export const runtimeMapScript = String.raw`
           type: 'renderedState',
           version: event.data.version,
           chatMessageCount: (currentState.chatMessages || []).length,
+          chatRoleLabelCount: elements.content.querySelectorAll('.chat-role').length,
           contentMode: currentState.contentMode,
           tutorMessageRendered: Boolean(
             currentState.tutorMessage &&
@@ -315,13 +316,14 @@ export const runtimeMapScript = String.raw`
       messages.forEach((message) => {
         const turn = document.createElement('article');
         turn.className = 'chat-turn ' + message.role;
-        const role = document.createElement('div');
-        role.className = 'chat-role';
-        role.textContent = message.role === 'user' ? '你' : 'Code Cat';
+        turn.setAttribute(
+          'aria-label',
+          message.role === 'user' ? '你的消息' : 'Code Cat 的回复',
+        );
         const body = document.createElement('div');
         body.className = 'chat-body';
         body.textContent = message.text;
-        turn.append(role, body);
+        turn.appendChild(body);
         conversation.appendChild(turn);
       });
       if (state.debugStatus === 'paused' && (state.frames || []).length) {
