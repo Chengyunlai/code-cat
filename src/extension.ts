@@ -151,13 +151,57 @@ export function activate(context: vscode.ExtensionContext): void {
         modelProvider.status(),
       ),
       vscode.commands.registerCommand("codeCat.__seedChat", () => {
-        store.addChatExchange("你好", "你好！你可以和我聊天，也可以直接询问项目代码。");
+        store.addChatExchange(
+          "如何继续？",
+          "查看 `checkout`，再对照 **调用栈**。",
+        );
       }),
       vscode.commands.registerCommand("codeCat.__seedTutorError", () => {
         store.setTutorMessage({
           id: randomUUID(),
           kind: "error",
-          markdown: "模型暂时不可用，请稍后重试。",
+          text: "模型暂时不可用，请稍后重试。",
+        });
+      }),
+      vscode.commands.registerCommand("codeCat.__seedStructuredPause", () => {
+        store.beginDebugSession("structured-pause-smoke");
+        store.recordPause({
+          id: "structured-pause",
+          sessionId: "structured-pause-smoke",
+          reason: "breakpoint",
+          threadId: 1,
+          recordedAt: "2026-07-23T00:00:00.000Z",
+          frames: [
+            {
+              id: 201,
+              name: "<module>",
+              location: { path: "/tmp/chat.py", line: 15, column: 1 },
+            },
+            {
+              id: 202,
+              name: "main",
+              location: { path: "/tmp/main.py", line: 7, column: 1 },
+            },
+          ],
+          variables: [
+            { name: "MAX_TURNS", value: "20", type: "int" },
+            {
+              name: "SYSTEM_PROMPT",
+              value: "这是一段已经受约束但仍然较长的运行时文本。".repeat(8),
+              type: "str",
+            },
+            { name: "mode", value: "chat", type: "str" },
+          ],
+        });
+        store.setTutorMessage({
+          id: randomUUID(),
+          kind: "pause",
+          pauseId: "structured-pause",
+          explanation: {
+            whatHappened: "程序正在执行 `chat.py` 的模块级代码。",
+            whyItMatters: "调用来自 **main.py**，它是当前可见的上游入口。",
+            inspectNext: "切换到上一层调用栈，确认是否在这里触发聊天流程。",
+          },
         });
       }),
     );
@@ -418,11 +462,11 @@ function handleTutorError(store: SessionStore, error: unknown): void {
   }
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof TutorGuidanceError) {
-    store.setTutorMessage({ id: randomUUID(), kind: "system", markdown: message });
+    store.setTutorMessage({ id: randomUUID(), kind: "system", text: message });
     void vscode.commands.executeCommand("workbench.view.extension.codeCat");
     return;
   }
-  store.setTutorMessage({ id: randomUUID(), kind: "error", markdown: message });
+  store.setTutorMessage({ id: randomUUID(), kind: "error", text: message });
   void vscode.commands.executeCommand("workbench.view.extension.codeCat");
 }
 

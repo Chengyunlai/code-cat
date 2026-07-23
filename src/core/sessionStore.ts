@@ -39,7 +39,7 @@ export class SessionStore implements vscode.Disposable {
       tutorMessage: {
         id: randomUUID(),
         kind: "route",
-        markdown: route.summary,
+        text: route.summary,
       },
       contentMode: "route",
     });
@@ -63,7 +63,10 @@ export class SessionStore implements vscode.Disposable {
   public selectPause(pauseId: string, frameId?: number): void {
     const pause = this.state.pauses.find((candidate) => candidate.id === pauseId);
     const tutorMessage =
-      this.state.tutorMessage?.pauseId === pauseId ? this.state.tutorMessage : undefined;
+      this.state.tutorMessage?.kind === "pause" &&
+      this.state.tutorMessage.pauseId === pauseId
+        ? this.state.tutorMessage
+        : undefined;
     this.update({
       ...this.state,
       selectedPauseId: pauseId,
@@ -127,7 +130,7 @@ export class SessionStore implements vscode.Disposable {
   }
 
   public setTutorMessage(message: TutorMessage): void {
-    if (message.pauseId && message.pauseId !== this.state.selectedPauseId) {
+    if (message.kind === "pause" && message.pauseId !== this.state.selectedPauseId) {
       this.update({ ...this.state, busyMessage: undefined });
       return;
     }

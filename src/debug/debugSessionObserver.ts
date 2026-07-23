@@ -3,11 +3,11 @@ import * as vscode from "vscode";
 import { SessionStore } from "../core/sessionStore";
 import {
   DapStackFrame,
-  DapVariable,
   DebugPause,
   StackFrameSnapshot,
   VariableSnapshot,
 } from "../domain/model";
+import { normalizeRuntimeVariables } from "./runtimeEvidence";
 
 interface DapEvent {
   readonly type?: unknown;
@@ -26,9 +26,6 @@ interface DapScope {
   readonly variablesReference?: unknown;
   readonly expensive?: unknown;
 }
-
-const SENSITIVE_VARIABLE =
-  /(?:password|passwd|secret|token|api[_-]?key|authorization|cookie|credential|private[_-]?key)/iu;
 
 export class DebugSessionObserver implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
@@ -218,35 +215,22 @@ async function captureTopFrameVariables(
     return leftScore - rightScore;
   });
 
-  const snapshots: VariableSnapshot[] = [];
+  const candidates: unknown[] = [];
   for (const scope of preferredScopes) {
-    if (snapshots.length >= maxVariables) {
+    if (normalizeRuntimeVariables(candidates, maxVariables).length >= maxVariables) {
       break;
     }
     const response = (await session.customRequest("variables", {
       variablesReference: scope.variablesReference,
       start: 0,
-      count: maxVariables - snapshots.length,
+      count: maxVariables,
     })) as { readonly variables?: unknown };
     if (!Array.isArray(response.variables)) {
       continue;
     }
-    for (const variable of response.variables) {
-      if (snapshots.length >= maxVariables) {
-        break;
-      }
-      if (isDapVariable(variable)) {
-        snapshots.push({
-          name: variable.name,
-          value: SENSITIVE_VARIABLE.test(variable.name)
-            ? "<redacted by Code Cat>"
-            : variable.value.slice(0, 500),
-          type: variable.type,
-        });
-      }
-    }
+    candidates.push(...response.variables);
   }
-  return snapshots;
+  return normalizeRuntimeVariables(candidates, maxVariables);
 }
 
 function isDapStackFrame(value: unknown): value is DapStackFrame {
@@ -270,10 +254,6 @@ function isDapScope(value: unknown): value is DapScope & {
     typeof value.name === "string" &&
     typeof value.variablesReference === "number"
   );
-}
-
-function isDapVariable(value: unknown): value is DapVariable {
-  return isObject(value) && typeof value.name === "string" && typeof value.value === "string";
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

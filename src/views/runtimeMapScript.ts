@@ -80,10 +80,20 @@ export const runtimeMapScript = String.raw`
           version: event.data.version,
           chatMessageCount: (currentState.chatMessages || []).length,
           chatRoleLabelCount: elements.content.querySelectorAll('.chat-role').length,
+          richTextElementCount: elements.content.querySelectorAll('.chat-body code, .chat-body strong').length,
+          pauseExplanationSectionCount: elements.content.querySelectorAll('.explanation-section').length,
+          pauseRichTextElementCount: elements.content.querySelectorAll('.explanation-section code, .explanation-section strong').length,
+          runtimeEvidenceGroupCount: elements.content.querySelectorAll('.runtime-evidence-group').length,
+          variablePreviewCount: elements.content.querySelectorAll('.variable-preview-row').length,
+          variablePreviewMaxLength: Math.max(
+            0,
+            ...Array.from(elements.content.querySelectorAll('.variable-preview-value'))
+              .map((element) => element.textContent.length),
+          ),
           contentMode: currentState.contentMode,
           tutorMessageRendered: Boolean(
             currentState.tutorMessage &&
-            elements.content.textContent.includes(currentState.tutorMessage.markdown)
+            elements.content.textContent.includes(tutorMessageText(currentState.tutorMessage))
           ),
         });
       }
@@ -217,7 +227,7 @@ export const runtimeMapScript = String.raw`
         elements.statusLabel.textContent = '查看历史暂停 · ' + (selectedPauseIndex + 1) + '/' + pauses.length + ' · 调试器仍处于当前暂停';
       } else if (state.debugStatus === 'paused' && frames.length) {
         elements.statusDot.classList.add('primary');
-        elements.statusLabel.textContent = 'Paused at ' + frames[0].fileLabel + ' · ' + (selectedPauseIndex + 1) + '/' + pauses.length;
+        elements.statusLabel.textContent = '暂停于 ' + frames[0].fileLabel + ' · ' + (selectedPauseIndex + 1) + '/' + pauses.length;
       } else if (state.debugStatus === 'running') {
         elements.statusDot.classList.add('primary');
         elements.statusLabel.textContent = pauses.length ? '调试运行中 · 等待下一次暂停' : '调试已连接，等待命中断点';
@@ -300,7 +310,7 @@ export const runtimeMapScript = String.raw`
       );
       const copy = document.createElement('p');
       copy.className = 'lesson-copy notice' + (isError ? ' error' : '');
-      copy.textContent = message.markdown;
+      copy.textContent = message.text;
       root.append(heading, copy);
       if (!state.workspaceOpen) {
         const actions = document.createElement('div');
@@ -321,8 +331,8 @@ export const runtimeMapScript = String.raw`
           message.role === 'user' ? '你的消息' : 'Code Cat 的回复',
         );
         const body = document.createElement('div');
-        body.className = 'chat-body';
-        body.textContent = message.text;
+        body.className = 'chat-body rich-text';
+        renderRichText(body, message.text);
         turn.appendChild(body);
         conversation.appendChild(turn);
       });
@@ -330,6 +340,91 @@ export const runtimeMapScript = String.raw`
         appendDebugActions(conversation, state);
       }
       root.appendChild(conversation);
+    }
+
+    function renderRichText(root, source) {
+      const lines = String(source || '').replace(/\r/gu, '').split('\n');
+      let index = 0;
+      while (index < lines.length) {
+        const line = lines[index];
+        if (!line.trim()) {
+          index += 1;
+          continue;
+        }
+        if (/^\x60{3}/u.test(line.trim())) {
+          const codeLines = [];
+          index += 1;
+          while (index < lines.length && !/^\x60{3}/u.test(lines[index].trim())) {
+            codeLines.push(lines[index]);
+            index += 1;
+          }
+          if (index < lines.length) index += 1;
+          const pre = document.createElement('pre');
+          const code = document.createElement('code');
+          code.textContent = codeLines.join('\n');
+          pre.appendChild(code);
+          root.appendChild(pre);
+          continue;
+        }
+        const headingMatch = /^(#{1,3})\s+(.+)$/u.exec(line.trim());
+        if (headingMatch) {
+          const heading = document.createElement('h3');
+          appendInlineRichText(heading, headingMatch[2]);
+          root.appendChild(heading);
+          index += 1;
+          continue;
+        }
+        const unordered = /^[-*]\s+(.+)$/u.exec(line.trim());
+        const ordered = /^\d+[.)]\s+(.+)$/u.exec(line.trim());
+        if (unordered || ordered) {
+          const list = document.createElement(ordered ? 'ol' : 'ul');
+          const pattern = ordered ? /^\d+[.)]\s+(.+)$/u : /^[-*]\s+(.+)$/u;
+          while (index < lines.length) {
+            const itemMatch = pattern.exec(lines[index].trim());
+            if (!itemMatch) break;
+            const item = document.createElement('li');
+            appendInlineRichText(item, itemMatch[1]);
+            list.appendChild(item);
+            index += 1;
+          }
+          root.appendChild(list);
+          continue;
+        }
+        const paragraphLines = [line.trim()];
+        index += 1;
+        while (index < lines.length && lines[index].trim() && !isRichBlockStart(lines[index])) {
+          paragraphLines.push(lines[index].trim());
+          index += 1;
+        }
+        const paragraph = document.createElement('p');
+        appendInlineRichText(paragraph, paragraphLines.join(' '));
+        root.appendChild(paragraph);
+      }
+    }
+
+    function isRichBlockStart(line) {
+      const trimmed = line.trim();
+      return /^\x60{3}/u.test(trimmed) || /^(?:#{1,3}\s+|[-*]\s+|\d+[.)]\s+)/u.test(trimmed);
+    }
+
+    function appendInlineRichText(root, source) {
+      const pattern = /(\x60[^\x60\n]+\x60|\*\*[^*\n]+\*\*)/gu;
+      let cursor = 0;
+      for (const match of source.matchAll(pattern)) {
+        const offset = match.index ?? 0;
+        if (offset > cursor) {
+          root.appendChild(document.createTextNode(source.slice(cursor, offset)));
+        }
+        const token = match[0];
+        const inlineCode = token.charCodeAt(0) === 96;
+        const element = document.createElement(inlineCode ? 'code' : 'strong');
+        element.textContent = inlineCode ? token.slice(1, -1) : token.slice(2, -2);
+        root.appendChild(element);
+        cursor = offset + token.length;
+      }
+      if (cursor < source.length) {
+        root.appendChild(document.createTextNode(source.slice(cursor)));
+      }
     }
 
     function renderEmpty(root, state) {
@@ -355,7 +450,9 @@ export const runtimeMapScript = String.raw`
       const heading = sectionHeading('阅读路线已准备', route.nodes.length + ' 个关键节点');
       const summary = document.createElement('p');
       summary.className = 'lesson-copy';
-      summary.textContent = state.tutorMessage?.markdown || route.summary;
+      summary.textContent = state.tutorMessage?.kind === 'route'
+        ? state.tutorMessage.text
+        : route.summary;
       const evidence = document.createElement('div');
       evidence.className = 'evidence';
       const linked = route.nodes.filter((node) => node.breakpoint).length;
@@ -401,15 +498,14 @@ export const runtimeMapScript = String.raw`
       const livePause = selectedPauseIsLive(state);
       const node = currentRouteNode(route, frame);
       const nodeIndex = route && node ? route.nodes.findIndex((candidate) => candidate.id === node.id) : -1;
+      const reading = document.createElement('article');
+      reading.className = 'pause-reading';
       const heading = document.createElement('div');
       heading.className = 'step-label';
-      const stepIcon = document.createElement('span');
-      stepIcon.className = 'step-icon';
-      stepIcon.textContent = '⌁';
       const stepText = document.createElement('span');
       const stepTitle = nodeIndex >= 0 ? '第 ' + (nodeIndex + 1) + ' 步 · ' + node.title : '运行时断点';
       stepText.textContent = livePause ? stepTitle : '历史快照 · ' + stepTitle;
-      heading.append(stepIcon, stepText);
+      heading.appendChild(stepText);
       const source = document.createElement('button');
       source.type = 'button';
       source.className = 'source-link';
@@ -422,60 +518,139 @@ export const runtimeMapScript = String.raw`
       source.addEventListener('click', () => {
         vscode.postMessage({ type: 'selectFrame', frameId: frame.id });
       });
-      const grid = document.createElement('div');
-      grid.className = 'overview-grid';
-      const lesson = document.createElement('div');
-      const copy = document.createElement('p');
-      copy.className = 'lesson-copy';
-      if (state.tutorMessage?.kind === 'error') copy.classList.add('notice', 'error');
-      copy.textContent = state.tutorMessage?.markdown || node?.reason || (livePause
-        ? '调试器已经在真实代码路径中暂停。先观察当前变量和调用栈，再决定继续、进入函数或跳过此层。'
-        : '这是之前一次暂停保存的只读快照。你可以检查当时的源码、调用栈和变量，但单步操作只作用于当前暂停。');
-      lesson.append(heading, source, copy);
-      appendDebugActions(lesson, state);
-      const evidence = variableEvidence(variables);
-      grid.append(lesson, evidence);
+      const explanation = pauseExplanation(state, node, livePause);
+      const sections = document.createElement('div');
+      sections.className = 'explanation-sections';
+      sections.append(
+        explanationSection('当前发生什么', explanation.whatHappened),
+        explanationSection('为什么重要', explanation.whyItMatters),
+        explanationSection('下一步看什么', explanation.inspectNext),
+      );
+      reading.append(heading, source, sections, runtimeEvidence(frames, variables));
+      appendDebugActions(reading, state);
       const tags = document.createElement('div');
       tags.className = 'tags';
       tags.append(
-        tag(livePause ? 'Current pause' : 'Historical snapshot', livePause ? 'current' : ''),
-        tag(frames.length + ' frames', ''),
+        tag(livePause ? '当前暂停' : '历史快照', livePause ? 'current' : ''),
+        tag(frames.length + ' 层调用', ''),
       );
-      root.append(grid, tags);
+      reading.appendChild(tags);
+      root.appendChild(reading);
     }
 
-    function variableEvidence(variables) {
-      const evidence = document.createElement('section');
-      evidence.className = 'evidence';
-      const head = document.createElement('div');
-      head.className = 'evidence-head';
-      head.innerHTML = '<div class="evidence-title"><span class="evidence-dot"></span>当前观察</div>';
-      const more = document.createElement('button');
-      more.type = 'button';
-      more.className = 'text-action';
-      more.textContent = variables.length ? '查看全部' : '等待变量';
-      more.disabled = variables.length === 0;
-      more.addEventListener('click', () => switchTab('variables'));
-      head.appendChild(more);
-      evidence.appendChild(head);
-      if (!variables.length) {
-        const empty = document.createElement('div');
-        empty.className = 'evidence-copy';
-        empty.textContent = '当前暂停没有可展示的顶层变量。';
-        evidence.appendChild(empty);
-        return evidence;
+    function pauseExplanation(state, node, livePause) {
+      if (state.tutorMessage?.kind === 'pause') {
+        return state.tutorMessage.explanation;
       }
-      const list = document.createElement('dl');
-      list.className = 'variable-preview';
-      variables.slice(0, 4).forEach((variable) => {
-        const name = document.createElement('dt');
-        const value = document.createElement('dd');
-        name.textContent = variable.name;
-        value.textContent = variable.value;
-        list.append(name, value);
-      });
-      evidence.appendChild(list);
+      return {
+        whatHappened: node?.reason || (livePause
+          ? '调试器已在当前源码位置暂停。'
+          : '这是之前一次暂停保存的只读快照。'),
+        whyItMatters: '调用栈和变量来自真实运行时，可以用来验证规划的代码路径。',
+        inspectNext: livePause
+          ? '先对照上层调用者和关键变量，再决定继续、进入函数或单步跳过。'
+          : '检查当时的调用栈和变量；单步操作仅作用于当前暂停。',
+      };
+    }
+
+    function explanationSection(title, text) {
+      const section = document.createElement('section');
+      section.className = 'explanation-section';
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      const body = document.createElement('div');
+      body.className = 'explanation-copy rich-text';
+      renderRichText(body, text);
+      section.append(heading, body);
+      return section;
+    }
+
+    function runtimeEvidence(frames, variables) {
+      const evidence = document.createElement('section');
+      evidence.className = 'runtime-evidence';
+      const heading = sectionHeading('运行时证据', '来自本次 debugpy 暂停，用来验证代码路径');
+      const grid = document.createElement('div');
+      grid.className = 'runtime-evidence-grid';
+      grid.append(runtimeStackEvidence(frames), runtimeVariableEvidence(variables));
+      evidence.append(heading, grid);
       return evidence;
+    }
+
+    function runtimeStackEvidence(frames) {
+      const group = evidenceGroup('调用路径', frames.length ? '查看完整调用栈' : '暂无调用栈', () => switchTab('stack'));
+      const list = document.createElement('div');
+      list.className = 'stack-preview';
+      frames.slice(0, 3).forEach((frame, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'stack-preview-row';
+        const order = document.createElement('span');
+        order.className = 'stack-preview-order';
+        order.textContent = '#' + index;
+        const name = document.createElement('span');
+        name.className = 'stack-preview-name';
+        name.textContent = displayFrameName(frame.name);
+        const file = document.createElement('span');
+        file.className = 'stack-preview-file';
+        file.textContent = frame.fileLabel;
+        button.append(order, name, file);
+        button.addEventListener('click', () => vscode.postMessage({ type: 'selectFrame', frameId: frame.id }));
+        list.appendChild(button);
+      });
+      if (!frames.length) list.appendChild(emptyNotice('当前没有可用的调用栈。'));
+      group.appendChild(list);
+      return group;
+    }
+
+    function runtimeVariableEvidence(variables) {
+      const group = evidenceGroup('关键变量', variables.length ? '查看全部变量' : '暂无变量', () => switchTab('variables'));
+      const list = document.createElement('div');
+      list.className = 'variable-preview-list';
+      variables.slice(0, 4).forEach((variable) => {
+        const row = document.createElement('div');
+        row.className = 'variable-preview-row';
+        const key = document.createElement('div');
+        key.className = 'variable-preview-key';
+        const name = document.createElement('code');
+        name.textContent = variable.name;
+        const type = document.createElement('span');
+        type.textContent = variable.type || '未知类型';
+        key.append(name, type);
+        const value = document.createElement('code');
+        value.className = 'variable-preview-value';
+        value.textContent = compactVariableValue(variable.value);
+        row.append(key, value);
+        list.appendChild(row);
+      });
+      if (!variables.length) list.appendChild(emptyNotice('当前暂停没有可展示的顶层变量。'));
+      group.appendChild(list);
+      return group;
+    }
+
+    function evidenceGroup(title, actionLabel, onAction) {
+      const group = document.createElement('section');
+      group.className = 'runtime-evidence-group';
+      const head = document.createElement('div');
+      head.className = 'runtime-evidence-group-head';
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      const action = document.createElement('button');
+      action.type = 'button';
+      action.className = 'text-action';
+      action.textContent = actionLabel;
+      action.addEventListener('click', onAction);
+      head.append(heading, action);
+      group.appendChild(head);
+      return group;
+    }
+
+    function compactVariableValue(value) {
+      const text = String(value || '');
+      return text.length <= 120 ? text : text.slice(0, 119) + '…';
+    }
+
+    function displayFrameName(name) {
+      return name === '<module>' ? '模块入口' : name;
     }
 
     function appendDebugActions(root, state) {
@@ -507,7 +682,7 @@ export const runtimeMapScript = String.raw`
     }
 
     function renderPath(root, route) {
-      root.appendChild(sectionHeading('Code Reading Map', route ? route.nodes.length + ' 个候选节点' : '尚未生成路径'));
+      root.appendChild(sectionHeading('代码阅读路径', route ? route.nodes.length + ' 个候选节点' : '尚未生成路径'));
       if (!route) {
         root.appendChild(emptyNotice('先在底部输入一个项目问题，Code Cat 会生成 3–8 个候选阅读节点。'));
         return;
@@ -535,7 +710,7 @@ export const runtimeMapScript = String.raw`
       open.className = 'path-node' + (node.executed ? ' executed' : '') + (node.active ? ' active' : '') + (node.focused ? ' focused' : '');
       const kicker = document.createElement('span');
       kicker.className = 'path-kicker';
-      const stateLabel = node.focused ? 'FOCUS' : node.active ? 'IN STACK' : node.executed ? 'EXECUTED' : 'CANDIDATE';
+      const stateLabel = node.focused ? '当前关注' : node.active ? '调用栈中' : node.executed ? '已执行' : '候选';
       kicker.innerHTML = '<span>' + stateLabel + '</span><span class="path-index">' + String(index + 1).padStart(2, '0') + '</span>';
       const title = document.createElement('span');
       title.className = 'path-title';
@@ -580,7 +755,7 @@ export const runtimeMapScript = String.raw`
         copy.className = 'frame-copy';
         const name = document.createElement('span');
         name.className = 'frame-name';
-        name.textContent = frame.name;
+        name.textContent = displayFrameName(frame.name);
         const file = document.createElement('span');
         file.className = 'frame-file';
         file.textContent = frame.fileLabel;
@@ -617,7 +792,7 @@ export const runtimeMapScript = String.raw`
         name.textContent = variable.name;
         const type = document.createElement('span');
         type.className = 'variable-type';
-        type.textContent = variable.type || 'unknown';
+        type.textContent = variable.type || '未知类型';
         key.append(name, type);
         const value = document.createElement('div');
         value.className = 'variable-value';
@@ -665,6 +840,17 @@ export const runtimeMapScript = String.raw`
         );
       }
       return route.nodes.find((node) => node.active);
+    }
+
+    function tutorMessageText(message) {
+      if (message.kind === 'pause') {
+        return [
+          message.explanation.whatHappened,
+          message.explanation.whyItMatters,
+          message.explanation.inspectNext,
+        ].join(' ');
+      }
+      return message.text || '';
     }
 
     function sectionHeading(title, subtitle) {

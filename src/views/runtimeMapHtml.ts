@@ -71,10 +71,10 @@ export function createRuntimeMapHtml(webview: vscode.Webview): string {
 
   <template id="debug-actions">
     <div class="action-row">
-      <button type="button" class="action primary" data-debug="continue">继续</button>
+      <button type="button" class="action primary" data-debug="continue">继续运行</button>
       <button type="button" class="action" data-debug="stepInto">进入函数</button>
-      <button type="button" class="action" data-debug="stepOver">跳过此层</button>
-      <button type="button" class="action quiet" data-action="explain">详细解释</button>
+      <button type="button" class="action" data-debug="stepOver">单步跳过</button>
+      <button type="button" class="action quiet" data-action="explain">解释当前暂停</button>
     </div>
   </template>
 

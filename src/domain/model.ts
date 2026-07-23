@@ -42,12 +42,29 @@ export interface RoutePlan {
   readonly nodes: readonly RouteNode[];
 }
 
-export interface TutorMessage {
-  readonly id: string;
-  readonly kind: "route" | "pause" | "system" | "error";
-  readonly markdown: string;
-  readonly pauseId?: string;
+export interface PauseExplanation {
+  readonly whatHappened: string;
+  readonly whyItMatters: string;
+  readonly inspectNext: string;
 }
+
+export type TutorMessage =
+  | {
+      readonly id: string;
+      readonly kind: "route";
+      readonly text: string;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "pause";
+      readonly pauseId: string;
+      readonly explanation: PauseExplanation;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "system" | "error";
+      readonly text: string;
+    };
 
 export interface ChatMessage {
   readonly id: string;

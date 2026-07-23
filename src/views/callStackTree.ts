@@ -32,7 +32,7 @@ export class CallStackTree
         arguments: [frame.location, frame.id],
       };
     } else {
-      item.description = "no source";
+      item.description = "无源码";
     }
     item.iconPath = new vscode.ThemeIcon("symbol-method");
     item.contextValue = "codeCat.stackFrame";

@@ -8,6 +8,7 @@ const {
   normalizeModelBaseUrl,
 } = require("../../dist/ai/modelProviderSecurity");
 const { SessionStore } = require("../../dist/core/sessionStore");
+const { normalizeRuntimeVariables } = require("../../dist/debug/runtimeEvidence");
 
 const TIMEOUT_MS = 30_000;
 
@@ -34,12 +35,14 @@ async function run() {
     "codeCat.__modelProviderStatus",
     "codeCat.__seedChat",
     "codeCat.__seedTutorError",
+    "codeCat.__seedStructuredPause",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
 
   await testHttpModelClients();
   await testRoutePreflight();
+  testRuntimeEvidenceConstraints();
   testConversationState();
   await testProviderSpecificSettings();
   testModelProviderSecurity();
@@ -66,6 +69,11 @@ async function run() {
     0,
     "chat turns must not render floating visible role labels",
   );
+  assert.equal(
+    renderedChatState.runtimeMap.renderedRichTextElementCount,
+    2,
+    "chat answers must render inline code and emphasis as structured DOM",
+  );
   await vscode.commands.executeCommand("codeCat.__seedTutorError");
   await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
@@ -75,6 +83,21 @@ async function run() {
       state.runtimeMap.scriptError === undefined,
     "the Runtime Map to render tutor feedback in its main content area",
   );
+  await vscode.commands.executeCommand("codeCat.__seedStructuredPause");
+  const structuredPauseState = await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) =>
+      state?.runtimeMap?.renderedContentMode === "debug" &&
+      state.runtimeMap.lastReceivedVersion === state.runtimeMap.stateVersion &&
+      state.runtimeMap.scriptError === undefined,
+    "the Runtime Map to render a structured pause",
+  );
+  assert.equal(structuredPauseState.runtimeMap.renderedPauseExplanationSectionCount, 3);
+  assert.equal(structuredPauseState.runtimeMap.renderedPauseRichTextElementCount, 2);
+  assert.equal(structuredPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 2);
+  assert.equal(structuredPauseState.runtimeMap.renderedVariablePreviewCount, 3);
+  assert.ok(structuredPauseState.runtimeMap.renderedVariablePreviewMaxLength <= 120);
+  await vscode.commands.executeCommand("codeCat.clearSession");
 
   const folder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(folder, "The Python example workspace should be open");
@@ -204,6 +227,29 @@ async function run() {
   }
 }
 
+function testRuntimeEvidenceConstraints() {
+  const snapshots = normalizeRuntimeVariables(
+    [
+      { name: "special variables", value: "...", type: "group" },
+      { name: "class variables", value: "...", type: "group" },
+      { name: "password", value: "super-secret", type: "str" },
+      { name: "inventory_id", value: "42", type: "int" },
+      { name: "inventory_id", value: "duplicate", type: "str" },
+      { name: "SYSTEM_PROMPT", value: `line one\n${"x".repeat(320)}`, type: "str" },
+    ],
+    4,
+  );
+  assert.deepEqual(
+    snapshots.map(({ name }) => name),
+    ["password", "inventory_id", "SYSTEM_PROMPT"],
+  );
+  assert.equal(snapshots[0].value, "<redacted by Code Cat>");
+  assert.equal(snapshots[1].value, "42");
+  assert.ok(snapshots[2].value.length <= 240);
+  assert.equal(snapshots[2].value.includes("\n"), false);
+  assert.equal(snapshots[2].value.endsWith("…"), true);
+}
+
 function testConversationState() {
   const store = new SessionStore();
   try {
@@ -241,7 +287,7 @@ function testConversationState() {
     store.setTutorMessage({
       id: "model-error",
       kind: "error",
-      markdown: "模型暂时不可用，请稍后重试。",
+      text: "模型暂时不可用，请稍后重试。",
     });
     assert.equal(
       store.snapshot().contentMode,
@@ -271,8 +317,12 @@ function testConversationState() {
     store.setTutorMessage({
       id: "pause-explanation",
       kind: "pause",
-      markdown: "当前正在处理结账。",
       pauseId: "pause-1",
+      explanation: {
+        whatHappened: "当前正在处理结账。",
+        whyItMatters: "这里决定是否继续支付。",
+        inspectNext: "查看库存标识。",
+      },
     });
     assert.equal(
       store.snapshot().contentMode,
@@ -362,6 +412,109 @@ async function testRoutePreflight() {
     assert.equal(greetingReadinessChecks, 0, "a greeting must not inspect the project");
     assert.equal(greetingIndexRequests, 0, "a greeting must not build project context");
     assert.equal(greetingModelRequests, 0, "a greeting must not wait for the model");
+
+    let pauseExplanationPrompt = "";
+    const pauseTutor = new AiTutor(
+      {
+        readinessIssue: async () => undefined,
+        promptContext: async () => "",
+        resolveFile: async () => undefined,
+      },
+      {
+        request: async (prompt) => {
+          pauseExplanationPrompt = prompt;
+          return JSON.stringify({
+            whatHappened: "程序在 checkout 的库存校验前暂停。",
+            whyItMatters: "这里决定订单能否继续进入支付。",
+            inspectNext: "查看 inventory_id 的值，再进入 reserve_inventory。",
+          });
+        },
+      },
+    );
+    const pauseExplanation = await pauseTutor.explainPause(
+      "结账请求为什么失败？",
+      {
+        id: "pause-structured",
+        sessionId: "debug-structured",
+        reason: "breakpoint",
+        threadId: 1,
+        recordedAt: "2026-07-23T00:00:00.000Z",
+        frames: [
+          {
+            id: 1,
+            name: "checkout",
+            location: { path: "/tmp/checkout.py", line: 12, column: 1 },
+          },
+        ],
+        variables: [{ name: "inventory_id", value: "42", type: "int" }],
+      },
+      cancellation.token,
+    );
+    assert.equal(pauseExplanation.kind, "pause");
+    assert.deepEqual(pauseExplanation.explanation, {
+      whatHappened: "程序在 checkout 的库存校验前暂停。",
+      whyItMatters: "这里决定订单能否继续进入支付。",
+      inspectNext: "查看 inventory_id 的值，再进入 reserve_inventory。",
+    });
+    assert.match(pauseExplanationPrompt, /whatHappened/u);
+    assert.match(pauseExplanationPrompt, /Return JSON only/u);
+    const invalidPauseTutor = new AiTutor(
+      {
+        readinessIssue: async () => undefined,
+        promptContext: async () => "",
+        resolveFile: async () => undefined,
+      },
+      {
+        request: async () =>
+          JSON.stringify({ whatHappened: "paused", whyItMatters: "important" }),
+      },
+    );
+    await assert.rejects(
+      invalidPauseTutor.explainPause(
+        undefined,
+        {
+          id: "invalid-pause",
+          sessionId: "invalid-session",
+          reason: "breakpoint",
+          threadId: 1,
+          recordedAt: "2026-07-23T00:00:00.000Z",
+          frames: [],
+          variables: [],
+        },
+        cancellation.token,
+      ),
+      /inspectNext/u,
+    );
+    const boundedPauseTutor = new AiTutor(
+      {
+        readinessIssue: async () => undefined,
+        promptContext: async () => "",
+        resolveFile: async () => undefined,
+      },
+      {
+        request: async () =>
+          JSON.stringify({
+            whatHappened: "x".repeat(800),
+            whyItMatters: "important",
+            inspectNext: "inspect",
+          }),
+      },
+    );
+    const boundedPause = await boundedPauseTutor.explainPause(
+      undefined,
+      {
+        id: "bounded-pause",
+        sessionId: "bounded-session",
+        reason: "breakpoint",
+        threadId: 1,
+        recordedAt: "2026-07-23T00:00:00.000Z",
+        frames: [],
+        variables: [],
+      },
+      cancellation.token,
+    );
+    assert.equal(boundedPause.explanation.whatHappened.length, 600);
+    assert.equal(boundedPause.explanation.whatHappened.endsWith("…"), true);
 
     const folder = vscode.workspace.workspaceFolders?.[0];
     assert.ok(folder, "the route-intent test needs the smoke workspace");

@@ -28,6 +28,12 @@ interface WebviewMessage {
   readonly version?: unknown;
   readonly chatMessageCount?: unknown;
   readonly chatRoleLabelCount?: unknown;
+  readonly richTextElementCount?: unknown;
+  readonly pauseExplanationSectionCount?: unknown;
+  readonly pauseRichTextElementCount?: unknown;
+  readonly runtimeEvidenceGroupCount?: unknown;
+  readonly variablePreviewCount?: unknown;
+  readonly variablePreviewMaxLength?: unknown;
   readonly contentMode?: unknown;
   readonly tutorMessageRendered?: unknown;
 }
@@ -43,6 +49,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
   private scriptError: string | undefined;
   private renderedChatMessageCount = 0;
   private renderedChatRoleLabelCount = 0;
+  private renderedRichTextElementCount = 0;
+  private renderedPauseExplanationSectionCount = 0;
+  private renderedPauseRichTextElementCount = 0;
+  private renderedRuntimeEvidenceGroupCount = 0;
+  private renderedVariablePreviewCount = 0;
+  private renderedVariablePreviewMaxLength = 0;
   private renderedContentMode: string | undefined;
   private tutorMessageRendered = false;
   private readonly disposables: vscode.Disposable[] = [];
@@ -80,6 +92,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           this.lastAcknowledgedFrameCount = 0;
           this.renderedChatMessageCount = 0;
           this.renderedChatRoleLabelCount = 0;
+          this.renderedRichTextElementCount = 0;
+          this.renderedPauseExplanationSectionCount = 0;
+          this.renderedPauseRichTextElementCount = 0;
+          this.renderedRuntimeEvidenceGroupCount = 0;
+          this.renderedVariablePreviewCount = 0;
+          this.renderedVariablePreviewMaxLength = 0;
           this.renderedContentMode = undefined;
           this.tutorMessageRendered = false;
         }
@@ -106,6 +124,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly scriptError: string | undefined;
     readonly renderedChatMessageCount: number;
     readonly renderedChatRoleLabelCount: number;
+    readonly renderedRichTextElementCount: number;
+    readonly renderedPauseExplanationSectionCount: number;
+    readonly renderedPauseRichTextElementCount: number;
+    readonly renderedRuntimeEvidenceGroupCount: number;
+    readonly renderedVariablePreviewCount: number;
+    readonly renderedVariablePreviewMaxLength: number;
     readonly renderedContentMode: string | undefined;
     readonly tutorMessageRendered: boolean;
   } {
@@ -121,6 +145,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       scriptError: this.scriptError,
       renderedChatMessageCount: this.renderedChatMessageCount,
       renderedChatRoleLabelCount: this.renderedChatRoleLabelCount,
+      renderedRichTextElementCount: this.renderedRichTextElementCount,
+      renderedPauseExplanationSectionCount: this.renderedPauseExplanationSectionCount,
+      renderedPauseRichTextElementCount: this.renderedPauseRichTextElementCount,
+      renderedRuntimeEvidenceGroupCount: this.renderedRuntimeEvidenceGroupCount,
+      renderedVariablePreviewCount: this.renderedVariablePreviewCount,
+      renderedVariablePreviewMaxLength: this.renderedVariablePreviewMaxLength,
       renderedContentMode: this.renderedContentMode,
       tutorMessageRendered: this.tutorMessageRendered,
     };
@@ -185,7 +215,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       frameCount: pause.frames.length,
       variableCount: pause.variables.length,
       label: pause.frames[0]
-        ? `${pause.frames[0].name} · ${frameLocationLabel(pause.frames[0])}`
+        ? `${displayFrameName(pause.frames[0].name)} · ${frameLocationLabel(pause.frames[0])}`
         : pause.reason,
       selected: pause.id === currentPause?.id,
     }));
@@ -242,6 +272,26 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
             typeof value.chatMessageCount === "number" ? value.chatMessageCount : 0;
           this.renderedChatRoleLabelCount =
             typeof value.chatRoleLabelCount === "number" ? value.chatRoleLabelCount : 0;
+          this.renderedRichTextElementCount =
+            typeof value.richTextElementCount === "number" ? value.richTextElementCount : 0;
+          this.renderedPauseExplanationSectionCount =
+            typeof value.pauseExplanationSectionCount === "number"
+              ? value.pauseExplanationSectionCount
+              : 0;
+          this.renderedPauseRichTextElementCount =
+            typeof value.pauseRichTextElementCount === "number"
+              ? value.pauseRichTextElementCount
+              : 0;
+          this.renderedRuntimeEvidenceGroupCount =
+            typeof value.runtimeEvidenceGroupCount === "number"
+              ? value.runtimeEvidenceGroupCount
+              : 0;
+          this.renderedVariablePreviewCount =
+            typeof value.variablePreviewCount === "number" ? value.variablePreviewCount : 0;
+          this.renderedVariablePreviewMaxLength =
+            typeof value.variablePreviewMaxLength === "number"
+              ? value.variablePreviewMaxLength
+              : 0;
           this.renderedContentMode =
             typeof value.contentMode === "string" ? value.contentMode : undefined;
           this.tutorMessageRendered = value.tutorMessageRendered === true;
@@ -340,7 +390,11 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
 function frameLocationLabel(frame: StackFrameSnapshot): string {
   return frame.location
     ? `${path.basename(frame.location.path)}:${frame.location.line}`
-    : "no source";
+    : "无源码";
+}
+
+function displayFrameName(name: string): string {
+  return name === "<module>" ? "模块入口" : name;
 }
 
 function closestRouteNodeId(

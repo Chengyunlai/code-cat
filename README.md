@@ -159,6 +159,25 @@ Set `CODE_CAT_VSCODE_EXTENSIONS_DIR` only when the isolated target itself must m
 
 The route is a hypothesis; the runtime trace is evidence. Code Cat deliberately displays both.
 
+### Code-understanding output contract
+
+Code Cat treats readability as a product invariant rather than leaving presentation to each
+model response:
+
+- A planned route is limited to validated files and 1–8 bounded nodes; titles, summaries, and
+  reasons are length-limited before entering session state.
+- A pause explanation must decode into exactly three fields: **what happened**, **why it
+  matters**, and **what to inspect next**. Missing or malformed fields are rejected instead of
+  rendering raw model output.
+- Debug variables are normalized once at capture time: debugger grouping rows are removed,
+  duplicate names are collapsed, credential-like names are redacted, line breaks are folded,
+  and displayed values are bounded.
+- The paused overview follows the reading order **source location → explanation → runtime
+  evidence → next debug action**. Full call-stack and variable tabs remain available for
+  deeper inspection.
+- Conversational Markdown is rendered into a small safe subset of DOM elements; model text is
+  never inserted as executable HTML.
+
 ## IDE support and repository layout
 
 The working prototype currently supports **VS Code only**. PyCharm support should stay in

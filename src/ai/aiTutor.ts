@@ -23,6 +23,12 @@ interface ModelQuestionResponse extends ModelRoutePlan {
   readonly message?: unknown;
 }
 
+interface ModelPauseExplanation {
+  readonly whatHappened?: unknown;
+  readonly whyItMatters?: unknown;
+  readonly inspectNext?: unknown;
+}
+
 export type TutorQuestionResult =
   | { readonly kind: "chat"; readonly answer: string }
   | { readonly kind: "route"; readonly route: RoutePlan };
@@ -31,6 +37,14 @@ export type TutorGuidanceCode = "no-workspace" | "no-python-files";
 
 const ROUTE_NODE_SCHEMA =
   '{"title":"...","symbol":"...","file":"relative/path.py","line":1,"reason":"...","confidence":"high|medium|low"}';
+const PAUSE_EXPLANATION_SCHEMA =
+  '{"whatHappened":"...","whyItMatters":"...","inspectNext":"..."}';
+const MAX_CHAT_ANSWER_LENGTH = 8_000;
+const MAX_ROUTE_SUMMARY_LENGTH = 1_200;
+const MAX_ROUTE_NODE_TITLE_LENGTH = 120;
+const MAX_ROUTE_NODE_SYMBOL_LENGTH = 200;
+const MAX_ROUTE_NODE_REASON_LENGTH = 600;
+const MAX_EXPLANATION_SECTION_LENGTH = 600;
 
 export class TutorGuidanceError extends Error {
   public constructor(
@@ -87,14 +101,17 @@ export class AiTutor {
       parsed = JSON.parse(stripCodeFence(response)) as ModelQuestionResponse;
     } catch {
       if (response.trim()) {
-        return { kind: "chat", answer: response.trim() };
+        return { kind: "chat", answer: boundedModelText(response, MAX_CHAT_ANSWER_LENGTH) };
       }
       throw new Error(
         "模型没有返回可识别的回答。请重新提问；如果持续出现，请更换更适合代码分析的模型。",
       );
     }
     if (parsed.kind === "chat" && typeof parsed.message === "string" && parsed.message.trim()) {
-      return { kind: "chat", answer: parsed.message.trim() };
+      return {
+        kind: "chat",
+        answer: boundedModelText(parsed.message, MAX_CHAT_ANSWER_LENGTH),
+      };
     }
     if (parsed.kind === "route" || Array.isArray(parsed.nodes)) {
       return { kind: "route", route: await this.parseRoute(question, parsed) };
@@ -142,14 +159,16 @@ export class AiTutor {
     const variables = pause.variables
       .map((variable) => `${variable.name}: ${variable.type ?? "?"} = ${variable.value}`)
       .join("\n");
-    const markdown = await this.request(
+    const response = await this.request(
       [
         "You are a patient Python debugging tutor.",
-        "Explain this real debugger pause using three short sections:",
-        "1. What is happening now",
-        "2. Why this stack and these values matter",
-        "3. What the learner should observe next",
+        "Explain this real debugger pause with exactly this JSON shape:",
+        PAUSE_EXPLANATION_SCHEMA,
+        "Each field must contain 1-3 concise sentences in the learner's language.",
+        "Use whatHappened for the current execution, whyItMatters for its role in the code path, and inspectNext for one concrete next observation.",
         "Do not claim facts that are not supported by the runtime snapshot.",
+        "Do not include Markdown headings or fenced code blocks.",
+        "Return JSON only, without Markdown fences.",
         "",
         `Learner's goal: ${question ?? "Understand the current execution path"}`,
         `Pause reason: ${pause.reason}`,
@@ -160,7 +179,12 @@ export class AiTutor {
       ].join("\n"),
       token,
     );
-    return { id: randomUUID(), kind: "pause", markdown, pauseId: pause.id };
+    return {
+      id: randomUUID(),
+      kind: "pause",
+      pauseId: pause.id,
+      explanation: parsePauseExplanation(response),
+    };
   }
 
   private async request(prompt: string, token: vscode.CancellationToken): Promise<string> {
@@ -214,16 +238,24 @@ export class AiTutor {
         candidate.confidence === "low"
           ? candidate.confidence
           : "low";
+      const title = boundedModelText(candidate.title, MAX_ROUTE_NODE_TITLE_LENGTH);
+      const reason = boundedModelText(candidate.reason, MAX_ROUTE_NODE_REASON_LENGTH);
+      if (!title || !reason) {
+        continue;
+      }
       nodes.push({
         id: randomUUID(),
-        title: candidate.title,
-        symbol: typeof candidate.symbol === "string" ? candidate.symbol : undefined,
+        title,
+        symbol:
+          typeof candidate.symbol === "string"
+            ? boundedModelText(candidate.symbol, MAX_ROUTE_NODE_SYMBOL_LENGTH) || undefined
+            : undefined,
         location: {
           path: absolutePath,
           line: Math.min(document.lineCount, Math.max(1, Math.floor(candidate.line))),
           column: 1,
         },
-        reason: candidate.reason,
+        reason,
         confidence,
       });
     }
@@ -233,13 +265,19 @@ export class AiTutor {
         "模型返回的路径无法映射到当前 Python 项目。请换一个更具体的问题；如果持续出现，请检查所选模型是否适合代码分析。",
       );
     }
+    const modelSummary =
+      typeof parsed.summary === "string"
+        ? boundedModelText(parsed.summary, MAX_ROUTE_SUMMARY_LENGTH)
+        : "";
 
     return {
       question,
       summary:
-        typeof parsed.summary === "string"
-          ? parsed.summary
-          : `A ${nodes.length}-stop reading route for: ${question}`,
+        modelSummary ||
+        boundedModelText(
+          `A ${nodes.length}-stop reading route for: ${question}`,
+          MAX_ROUTE_SUMMARY_LENGTH,
+        ),
       nodes,
     };
   }
@@ -250,6 +288,38 @@ function stripCodeFence(value: string): string {
     .replace(/^```(?:json)?\s*/u, "")
     .replace(/\s*```$/u, "")
     .trim();
+}
+
+function parsePauseExplanation(raw: string): {
+  readonly whatHappened: string;
+  readonly whyItMatters: string;
+  readonly inspectNext: string;
+} {
+  let parsed: ModelPauseExplanation;
+  try {
+    parsed = JSON.parse(stripCodeFence(raw)) as ModelPauseExplanation;
+  } catch {
+    throw new Error("模型没有按结构返回暂停解释，请重试或更换模型。");
+  }
+  return {
+    whatHappened: explanationSection(parsed.whatHappened, "whatHappened"),
+    whyItMatters: explanationSection(parsed.whyItMatters, "whyItMatters"),
+    inspectNext: explanationSection(parsed.inspectNext, "inspectNext"),
+  };
+}
+
+function explanationSection(value: unknown, field: string): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`模型返回的暂停解释缺少 ${field} 字段。`);
+  }
+  return boundedModelText(value, MAX_EXPLANATION_SECTION_LENGTH);
+}
+
+function boundedModelText(value: string, maximumLength: number): string {
+  const normalized = value.replaceAll("\0", "").trim();
+  return normalized.length <= maximumLength
+    ? normalized
+    : `${normalized.slice(0, maximumLength - 1)}…`;
 }
 
 function routeInstructions(): readonly string[] {
