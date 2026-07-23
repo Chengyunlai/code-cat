@@ -27,9 +27,12 @@ Then:
 ```bash
 npm install
 npm run compile
+npm run smoke:vscode
 ```
 
 Open this repository in VS Code and press `F5`. The extension-development window opens the bundled `examples/python-order-service` workspace.
+
+`npm run smoke:vscode` launches an isolated Extension Host using the installed VS Code application and Microsoft Python extensions. It verifies activation, command registration, debugpy startup, a real breakpoint, and an active stack frame.
 
 1. Open the Code Cat activity-bar view.
 2. Ask: `How does checkout validate inventory and charge the customer?`

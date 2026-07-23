@@ -51,9 +51,19 @@ export function activate(context: vscode.ExtensionContext): void {
         await locateRoute(store, tutor, question.trim());
       }
     }),
-    vscode.commands.registerCommand("codeCat.startGuidedDebug", async () => {
-      await startGuidedDebug(store, tutor, observer, store.snapshot().route?.question);
-    }),
+    vscode.commands.registerCommand(
+      "codeCat.startGuidedDebug",
+      async (suppliedQuestion?: unknown) => {
+        await startGuidedDebug(
+          store,
+          tutor,
+          observer,
+          typeof suppliedQuestion === "string"
+            ? suppliedQuestion
+            : store.snapshot().route?.question,
+        );
+      },
+    ),
     vscode.commands.registerCommand("codeCat.explainPause", async () => {
       await explainCurrentPause(store, tutor);
     }),
