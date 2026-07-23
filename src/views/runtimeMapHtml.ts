@@ -21,25 +21,26 @@ export function createRuntimeMapHtml(webview: vscode.Webview): string {
       <div class="shell">
         <div class="title-row">
           <div class="title-copy">
-            <h1 class="product-name">Code Cat</h1>
-            <p id="session-title" class="session-title">Python 代码阅读助手</p>
+            <div class="title-primary">
+              <h1 class="product-name">Code Cat</h1>
+              <span class="title-separator" aria-hidden="true">/</span>
+              <p id="session-title" class="session-title">Python 项目</p>
+            </div>
             <div class="session-status" aria-live="polite">
               <span id="status-dot" class="status-dot"></span>
-              <span id="status-label" class="status-label">提出问题，建立第一条代码路径</span>
+              <span id="status-label" class="status-label">等待代码问题</span>
             </div>
           </div>
           <div class="header-actions">
             <button id="configure-model" type="button" class="model-provider" aria-label="配置大模型" title="配置大模型">
-              <span class="model-provider-dot" aria-hidden="true"></span>
               <span id="model-provider-label" class="model-provider-label">VS Code 内置模型</span>
               <span class="model-provider-chevron" aria-hidden="true">⌄</span>
             </button>
-            <div class="header-mark" aria-hidden="true">⌁</div>
           </div>
         </div>
         <nav id="tabs" class="tabs" role="tablist" aria-label="Code Cat 视图">
-          <button id="tab-overview" type="button" class="tab" role="tab" data-tab="overview" aria-controls="content" aria-selected="true" tabindex="0">当前步骤</button>
-          <button id="tab-path" type="button" class="tab" role="tab" data-tab="path" aria-controls="content" aria-selected="false" tabindex="-1">执行路径<span id="path-count" class="tab-count"></span></button>
+          <button id="tab-overview" type="button" class="tab" role="tab" data-tab="overview" aria-controls="content" aria-selected="true" tabindex="0">概览</button>
+          <button id="tab-path" type="button" class="tab" role="tab" data-tab="path" aria-controls="content" aria-selected="false" tabindex="-1">路径<span id="path-count" class="tab-count"></span></button>
           <button id="tab-stack" type="button" class="tab" role="tab" data-tab="stack" aria-controls="content" aria-selected="false" tabindex="-1">调用栈<span id="stack-count" class="tab-count"></span></button>
           <button id="tab-variables" type="button" class="tab" role="tab" data-tab="variables" aria-controls="content" aria-selected="false" tabindex="-1">变量<span id="variable-count" class="tab-count"></span></button>
         </nav>
@@ -49,21 +50,20 @@ export function createRuntimeMapHtml(webview: vscode.Webview): string {
     <main id="content" role="tabpanel" aria-labelledby="tab-overview" tabindex="0"></main>
     <footer class="composer">
       <div class="composer-shell">
-        <div class="composer-meta">
-          <div class="composer-mode">
-            <span class="composer-mode-dot" aria-hidden="true"></span>
-            <span id="composer-mode" aria-live="polite">定位代码路径</span>
-          </div>
-          <div class="composer-shortcut" aria-label="快捷键 Command 或 Control 加 Enter">
-            <kbd>⌘/Ctrl</kbd><span aria-hidden="true">+</span><kbd>Enter</kbd>
-          </div>
-        </div>
         <div id="composer-inner" class="composer-inner">
           <textarea id="question" rows="1" aria-label="代码问题" aria-describedby="composer-mode" placeholder="你想理解哪段代码？"></textarea>
-          <button id="locate" type="button" class="send" aria-label="定位代码路径" title="定位代码路径" disabled>
-            <span class="send-label">发送</span>
-            <span class="send-arrow" aria-hidden="true">↑</span>
-          </button>
+          <div class="composer-meta">
+            <div id="composer-mode" class="composer-mode" aria-live="polite">定位代码路径</div>
+            <div class="composer-controls">
+              <div class="composer-shortcut" aria-label="快捷键 Command 或 Control 加 Enter">
+                <kbd>⌘/Ctrl</kbd><span aria-hidden="true">+</span><kbd>Enter</kbd>
+              </div>
+              <button id="locate" type="button" class="send" aria-label="定位代码路径" title="定位代码路径" disabled>
+                <span class="send-label">发送</span>
+                <span class="send-arrow" aria-hidden="true">↑</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </footer>

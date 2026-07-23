@@ -38,6 +38,7 @@
       {
         "command": "codeCat.startGuidedDebug",
         "title": "Code Cat: Start Guided Debug",
+        "shortTitle": "Start Debug",
         "icon": "$(debug-start)"
       },
       {
@@ -51,11 +52,13 @@
       {
         "command": "codeCat.clearSession",
         "title": "Code Cat: Clear Session",
+        "shortTitle": "Clear",
         "icon": "$(clear-all)"
       },
       {
         "command": "codeCat.configureModelProvider",
         "title": "Code Cat: Configure Model Provider",
+        "shortTitle": "Model",
         "icon": "$(gear)"
       },
       {

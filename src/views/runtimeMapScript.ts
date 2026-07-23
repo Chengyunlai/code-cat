@@ -82,7 +82,7 @@ export const runtimeMapScript = String.raw`
       const frames = state.frames || [];
       const variables = state.variables || [];
       const pauses = state.pauses || [];
-      elements.sessionTitle.textContent = route?.question || 'Python 代码阅读助手';
+      elements.sessionTitle.textContent = route?.question || 'Python 项目';
       elements.pathCount.textContent = route ? String(route.nodes.length) : '';
       elements.stackCount.textContent = frames.length ? String(frames.length) : '';
       elements.variableCount.textContent = variables.length ? String(variables.length) : '';
@@ -205,7 +205,7 @@ export const runtimeMapScript = String.raw`
         elements.statusDot.classList.add('primary');
         elements.statusLabel.textContent = '已规划 ' + state.route.nodes.length + ' 个关键节点';
       } else {
-        elements.statusLabel.textContent = '提出问题，建立第一条代码路径';
+        elements.statusLabel.textContent = '等待代码问题';
       }
     }
 
@@ -270,7 +270,7 @@ export const runtimeMapScript = String.raw`
     function renderEmpty(root) {
       const empty = document.createElement('section');
       empty.className = 'empty-state';
-      empty.innerHTML = '<div class="empty-copy"><div class="empty-symbol">⌁</div><h2>从一个真实问题开始</h2><p>Code Cat 会先规划候选阅读路径，再用断点、调用栈和变量把猜测替换成运行时证据。</p></div>';
+      empty.innerHTML = '<div class="empty-copy"><h2>追踪一个代码行为</h2><p>描述你想理解的功能、请求或异常。Code Cat 会定位入口和调用链，并把断点、栈帧与变量同步到同一条路径。</p></div>';
       root.appendChild(empty);
     }
 
