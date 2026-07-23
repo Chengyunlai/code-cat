@@ -16,6 +16,10 @@ export const runtimeMapStyles = String.raw`
       --cc-strong: #18181b;
       --cc-on-strong: #ffffff;
       --cc-focus: #2563eb;
+      --cc-composer-bg: #f5f5f7;
+      --cc-composer-focus: #ffffff;
+      --cc-composer-border: #d8d8dd;
+      --cc-composer-placeholder: #66666f;
       --cc-radius: 10px;
       --cc-ease: cubic-bezier(.16, 1, .3, 1);
     }
@@ -33,6 +37,10 @@ export const runtimeMapStyles = String.raw`
       --cc-success-soft: #173623;
       --cc-strong: #f4f4f5;
       --cc-on-strong: #18181b;
+      --cc-composer-bg: var(--vscode-input-background, #242427);
+      --cc-composer-focus: var(--vscode-editorWidget-background, #2a2a2e);
+      --cc-composer-border: var(--vscode-input-border, #48484f);
+      --cc-composer-placeholder: var(--vscode-input-placeholderForeground, #b4b4bc);
     }
     * { box-sizing: border-box; }
     html, body { min-height: 100%; }
@@ -262,29 +270,88 @@ export const runtimeMapStyles = String.raw`
       bottom: 0;
       z-index: 20;
       margin-top: auto;
-      padding: 12px 16px 14px;
+      padding: 11px 16px 13px;
       background: var(--cc-bg);
       border-top: 1px solid var(--cc-border);
     }
-    .composer-inner { display: flex; align-items: flex-end; gap: 8px; width: 100%; max-width: 808px; margin: 0 auto; padding: 7px; background: var(--cc-strong); border-radius: 9px; }
-    .composer textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 110px; padding: 11px 8px; resize: vertical; color: var(--cc-on-strong); background: transparent; border: 0; line-height: 1.35; }
-    .composer textarea::placeholder { color: color-mix(in srgb, var(--cc-on-strong) 68%, transparent); opacity: 1; }
+    .composer-shell { width: 100%; max-width: 808px; margin: 0 auto; }
+    .composer-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 24px;
+      margin: 0 3px 7px;
+      color: var(--cc-muted);
+      font-size: 11px;
+    }
+    .composer-mode { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--cc-ink); font-weight: 650; }
+    .composer-mode-dot { flex: 0 0 auto; width: 7px; height: 7px; background: var(--cc-primary); border-radius: 50%; }
+    .composer-mode span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .composer-shortcut { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; color: var(--cc-faint); }
+    .composer-shortcut kbd {
+      min-width: 26px;
+      padding: 1px 5px;
+      color: var(--cc-muted);
+      background: var(--cc-panel);
+      border: 1px solid var(--cc-border);
+      border-radius: 4px;
+      font: 10px/1.5 var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      text-align: center;
+    }
+    .composer-inner {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 7px 7px 12px;
+      background: var(--cc-composer-bg);
+      border: 1px solid var(--cc-composer-border);
+      border-radius: 12px;
+      transition: background-color 160ms var(--cc-ease), border-color 160ms var(--cc-ease), box-shadow 160ms var(--cc-ease);
+    }
+    .composer-inner:focus-within {
+      background: var(--cc-composer-focus);
+      border-color: var(--cc-primary);
+      box-shadow: 0 0 0 3px var(--cc-primary-soft);
+    }
+    .composer-inner.busy { background: var(--cc-panel); }
+    .composer textarea {
+      flex: 1;
+      min-width: 0;
+      min-height: 44px;
+      max-height: 120px;
+      padding: 11px 2px;
+      resize: none;
+      overflow-y: auto;
+      color: var(--cc-ink);
+      caret-color: var(--cc-primary);
+      background: transparent;
+      border: 0;
+      line-height: 1.4;
+    }
+    .composer textarea::placeholder { color: var(--cc-composer-placeholder); opacity: 1; }
     .composer textarea:focus-visible { outline: 0; }
     .send {
-      display: grid;
-      place-items: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
       flex: 0 0 auto;
-      width: 44px;
+      min-width: 76px;
       height: 44px;
-      padding: 0;
+      padding: 0 13px;
       color: #fff;
       background: var(--cc-primary);
       border: 0;
-      border-radius: 7px;
-      font-size: 18px;
+      border-radius: 8px;
+      font-weight: 700;
+      transition: filter 140ms var(--cc-ease), transform 140ms var(--cc-ease);
     }
     .send:hover { filter: brightness(.94); }
-    .composer-hint { max-width: 808px; margin: 6px auto 0; color: var(--cc-faint); text-align: center; font-size: 10px; }
+    .send:active { transform: translateY(1px); }
+    .send:disabled { color: var(--cc-faint); background: var(--cc-panel-strong); opacity: 1; }
+    .send-arrow { font-size: 17px; font-weight: 500; line-height: 1; }
     @keyframes reveal { from { opacity: .65; transform: translateY(3px); } to { opacity: 1; transform: none; } }
     @media (min-width: 620px) {
       .app-header { padding-inline: 22px; }
@@ -293,6 +360,11 @@ export const runtimeMapStyles = String.raw`
       .composer { padding-inline: 22px; }
       .overview-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(220px, .7fr); gap: 16px; align-items: start; }
       .overview-grid .evidence { margin-top: 0; }
+    }
+    @media (max-width: 420px) {
+      .composer-shortcut { display: none; }
+      .send { min-width: 44px; width: 44px; padding: 0; }
+      .send-label { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }

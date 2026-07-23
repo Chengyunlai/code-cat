@@ -41,11 +41,24 @@ export function createRuntimeMapHtml(webview: vscode.Webview): string {
     <div id="pause-rail" class="pause-rail shell" aria-label="暂停历史"></div>
     <main id="content" role="tabpanel" aria-labelledby="tab-overview" tabindex="0"></main>
     <footer class="composer">
-      <div class="composer-inner">
-        <textarea id="question" rows="1" aria-label="代码问题" placeholder="为什么停在这里？或者输入新的代码问题"></textarea>
-        <button id="locate" type="button" class="send" aria-label="定位代码路径" title="定位代码路径">↑</button>
+      <div class="composer-shell">
+        <div class="composer-meta">
+          <div class="composer-mode">
+            <span class="composer-mode-dot" aria-hidden="true"></span>
+            <span id="composer-mode" aria-live="polite">定位代码路径</span>
+          </div>
+          <div class="composer-shortcut" aria-label="快捷键 Command 或 Control 加 Enter">
+            <kbd>⌘/Ctrl</kbd><span aria-hidden="true">+</span><kbd>Enter</kbd>
+          </div>
+        </div>
+        <div id="composer-inner" class="composer-inner">
+          <textarea id="question" rows="1" aria-label="代码问题" aria-describedby="composer-mode" placeholder="你想理解哪段代码？"></textarea>
+          <button id="locate" type="button" class="send" aria-label="定位代码路径" title="定位代码路径" disabled>
+            <span class="send-label">发送</span>
+            <span class="send-arrow" aria-hidden="true">↑</span>
+          </button>
+        </div>
       </div>
-      <div id="composer-hint" class="composer-hint">⌘/Ctrl + Enter 定位代码路径</div>
     </footer>
   </div>
 

@@ -5,7 +5,8 @@ export const runtimeMapScript = String.raw`
     });
     const elements = {
       content: document.getElementById('content'),
-      composerHint: document.getElementById('composer-hint'),
+      composerInner: document.getElementById('composer-inner'),
+      composerMode: document.getElementById('composer-mode'),
       pathCount: document.getElementById('path-count'),
       pauseRail: document.getElementById('pause-rail'),
       question: document.getElementById('question'),
@@ -39,6 +40,10 @@ export const runtimeMapScript = String.raw`
         event.preventDefault();
         submitQuestion();
       }
+    });
+    elements.question.addEventListener('input', () => {
+      resizeQuestion();
+      updateSendAvailability();
     });
     elements.tabs.addEventListener('click', (event) => {
       const tab = event.target.closest('[data-tab]');
@@ -85,9 +90,9 @@ export const runtimeMapScript = String.raw`
       view.className = 'view';
       const paused = state.debugStatus === 'paused' && frames.length > 0;
       const livePause = selectedPauseIsLive(state);
-      elements.composerHint.textContent = paused
-        ? (livePause ? '当前暂停追问' : '历史快照追问') + ' · ⌘/Ctrl + Enter 发送'
-        : '⌘/Ctrl + Enter 定位代码路径';
+      elements.composerMode.textContent = paused
+        ? livePause ? '基于当前暂停追问' : '分析历史暂停快照'
+        : route ? '提出新的代码路径问题' : '定位代码路径';
       elements.question.placeholder = paused
         ? livePause ? '为什么停在这里？' : '这个历史暂停说明了什么？'
         : route
@@ -97,7 +102,8 @@ export const runtimeMapScript = String.raw`
       elements.send.title = sendLabel;
       elements.send.setAttribute('aria-label', sendLabel);
       elements.question.disabled = requestPending;
-      elements.send.disabled = requestPending;
+      updateSendAvailability();
+      elements.composerInner.classList.toggle('busy', requestPending);
       if (state.requestPending || state.busyMessage) renderBusy(view, state.busyMessage, state);
       else if (activeTab === 'path') renderPath(view, route);
       else if (activeTab === 'stack') renderStack(view, state);
@@ -120,6 +126,16 @@ export const runtimeMapScript = String.raw`
       }
       beginLocalRequest();
       elements.question.value = '';
+      resizeQuestion();
+    }
+
+    function resizeQuestion() {
+      elements.question.style.height = 'auto';
+      elements.question.style.height = Math.min(elements.question.scrollHeight, 120) + 'px';
+    }
+
+    function updateSendAvailability() {
+      elements.send.disabled = requestPending || !elements.question.value.trim();
     }
 
     function beginLocalRequest(buttons) {
