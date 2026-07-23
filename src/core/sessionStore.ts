@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import {
+  ChatMessage,
   DebugPause,
   RoutePlan,
   SessionState,
@@ -8,10 +9,11 @@ import {
 } from "../domain/model";
 
 export type SessionRequestKind = NonNullable<SessionState["requestKind"]>;
+const MAX_CHAT_MESSAGES = 40;
 
 export class SessionStore implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<SessionState>();
-  private state: SessionState = { pauses: [] };
+  private state: SessionState = { pauses: [], chatMessages: [] };
 
   public readonly onDidChange = this.changeEmitter.event;
 
@@ -126,6 +128,23 @@ export class SessionStore implements vscode.Disposable {
     });
   }
 
+  public addChatExchange(question: string, answer: string): void {
+    const messages: ChatMessage[] = [
+      { id: randomUUID(), role: "user", text: question },
+      { id: randomUUID(), role: "assistant", text: answer },
+    ];
+    this.update({
+      ...this.state,
+      chatMessages: [...this.state.chatMessages, ...messages].slice(-MAX_CHAT_MESSAGES),
+      tutorMessage: {
+        id: randomUUID(),
+        kind: "chat",
+        markdown: answer,
+      },
+      busyMessage: undefined,
+    });
+  }
+
   public setBusy(message?: string): void {
     this.update({ ...this.state, busyMessage: message });
   }
@@ -149,7 +168,7 @@ export class SessionStore implements vscode.Disposable {
     if (this.state.requestKind) {
       return false;
     }
-    this.update({ pauses: [], debugStatus: "idle" });
+    this.update({ pauses: [], chatMessages: [], debugStatus: "idle" });
     return true;
   }
 

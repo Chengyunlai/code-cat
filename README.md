@@ -109,8 +109,8 @@ providers above.
 ### 4. First guided-debug session
 
 1. Open the Code Cat activity-bar view.
-2. Ask a project question such as `How does checkout validate inventory and charge the customer?`.
-3. Select **Locate code path**.
+2. Type a normal message to chat with Code Cat, or ask a project question such as `How does checkout validate inventory and charge the customer?`. Code Cat automatically chooses conversation or code-path mode.
+3. For a code-path question, wait for the proposed route.
 4. Toggle breakpoints on the proposed route nodes.
 5. Open the Python entry file or add a Python/debugpy configuration to `.vscode/launch.json`.
 6. Select **Start guided debug** and choose a configuration when prompted.

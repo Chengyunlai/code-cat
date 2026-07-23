@@ -22,8 +22,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const actionCoordinator = new SessionActionCoordinator(store);
 
   const actions: RuntimeMapActions = {
-    locateRoute: (question) =>
-      actionCoordinator.run("route", () => locateRoute(store, tutor, question)),
+    askQuestion: (question) =>
+      actionCoordinator.run("route", () => answerQuestion(store, tutor, question)),
     startGuidedDebug: (question) =>
       actionCoordinator.run("debug", () =>
         startGuidedDebug(store, tutor, observer, question),
@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
         ignoreFocusOut: true,
       });
       if (question?.trim()) {
-        await actions.locateRoute(question.trim());
+        await actions.askQuestion(question.trim());
       }
     }),
     vscode.commands.registerCommand(
@@ -134,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): void {
         debugSessionId: store.snapshot().debugSessionId,
         debugStatus: store.snapshot().debugStatus,
         pauseCount: store.snapshot().pauses.length,
+        chatMessageCount: store.snapshot().chatMessages.length,
         lastPauseFrameCount: store.selectedPause()?.frames.length ?? 0,
         lastPauseVariableCount: store.selectedPause()?.variables.length ?? 0,
         callStackFrameCount: callStackTree.getChildren().length,
@@ -149,11 +150,41 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("codeCat.__modelProviderStatus", () =>
         modelProvider.status(),
       ),
+      vscode.commands.registerCommand("codeCat.__seedChat", () => {
+        store.addChatExchange("你好", "你好！你可以和我聊天，也可以直接询问项目代码。");
+      }),
     );
   }
 }
 
 export function deactivate(): void {}
+
+async function answerQuestion(
+  store: SessionStore,
+  tutor: AiTutor,
+  question: string,
+): Promise<void> {
+  store.setBusy("正在理解你的问题…");
+  try {
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Code Cat is answering",
+        cancellable: true,
+      },
+      async (_progress, token) =>
+        tutor.answerQuestion(question, store.snapshot().chatMessages, token),
+    );
+    if (result.kind === "chat") {
+      store.addChatExchange(question, result.answer);
+    } else {
+      store.setRoute(result.route);
+    }
+    await vscode.commands.executeCommand("workbench.view.extension.codeCat");
+  } catch (error) {
+    handleTutorError(store, error);
+  }
+}
 
 async function locateRoute(
   store: SessionStore,

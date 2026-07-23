@@ -185,6 +185,13 @@ export const runtimeMapStyles = String.raw`
     .empty-copy { max-width: 560px; }
     .empty-state h2 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
     .empty-state p { max-width: 62ch; margin: 0; color: var(--cc-muted); text-wrap: pretty; }
+    .conversation { width: 100%; max-width: 680px; padding: 4px 0 24px; }
+    .chat-turn { margin-bottom: 22px; }
+    .chat-role { margin-bottom: 5px; color: var(--cc-muted); font-size: 10px; font-weight: 500; }
+    .chat-body { max-width: 70ch; white-space: pre-wrap; text-wrap: pretty; }
+    .chat-turn.user { margin-left: 12%; }
+    .chat-turn.user .chat-role { text-align: right; }
+    .chat-turn.user .chat-body { margin-left: auto; padding: 9px 11px; background: var(--cc-surface); border-radius: var(--cc-radius); }
     .route-summary { margin-bottom: 14px; padding: 0 0 12px; color: var(--cc-muted); border-bottom: 1px solid var(--cc-border); }
     .legend { display: flex; flex-wrap: wrap; gap: 8px 13px; margin-bottom: 12px; color: var(--cc-muted); font-size: 10px; }
     .legend-item { display: flex; align-items: center; gap: 5px; }

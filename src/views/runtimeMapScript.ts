@@ -36,6 +36,7 @@ export const runtimeMapScript = String.raw`
       modelProvider: { label: 'VS Code 内置模型' },
       debugging: false,
       workspaceOpen: true,
+      chatMessages: [],
     };
 
     document.getElementById('locate').addEventListener('click', submitQuestion);
@@ -73,7 +74,11 @@ export const runtimeMapScript = String.raw`
       if (event.data?.type === 'state') {
         currentState = event.data.state;
         render(currentState);
-        vscode.postMessage({ type: 'renderedState', version: event.data.version });
+        vscode.postMessage({
+          type: 'renderedState',
+          version: event.data.version,
+          chatMessageCount: (currentState.chatMessages || []).length,
+        });
       }
     });
 
@@ -83,6 +88,7 @@ export const runtimeMapScript = String.raw`
       const frames = state.frames || [];
       const variables = state.variables || [];
       const pauses = state.pauses || [];
+      const chatMessages = state.chatMessages || [];
       elements.sessionTitle.textContent = route?.question || 'Python 项目';
       elements.pathCount.textContent = route ? String(route.nodes.length) : '';
       elements.stackCount.textContent = frames.length ? String(frames.length) : '';
@@ -105,14 +111,14 @@ export const runtimeMapScript = String.raw`
         ? '需要打开 Python 项目'
         : paused
         ? livePause ? '基于当前暂停追问' : '分析历史暂停快照'
-        : route ? '提出新的代码路径问题' : '定位代码路径';
+        : route || chatMessages.length ? '继续聊天或询问代码路径' : '聊天或询问代码路径';
       elements.question.placeholder = !state.workspaceOpen
         ? '打开项目后即可定位代码路径'
         : paused
         ? livePause ? '为什么停在这里？' : '这个历史暂停说明了什么？'
         : route
-          ? '输入新的代码问题'
-          : '你想理解哪段代码？';
+          ? '继续聊天，或输入新的代码问题'
+          : '输入消息，或询问项目代码';
       const sendLabel = paused ? (livePause ? '解释当前暂停' : '解释历史快照') : '定位代码路径';
       elements.send.title = sendLabel;
       elements.send.setAttribute('aria-label', sendLabel);
@@ -194,6 +200,9 @@ export const runtimeMapScript = String.raw`
             : '请求处理中…');
       } else if (!state.workspaceOpen) {
         elements.statusLabel.textContent = '未打开 Python 项目';
+      } else if (state.tutorMessage?.kind === 'chat') {
+        elements.statusDot.classList.add('primary');
+        elements.statusLabel.textContent = '对话已更新';
       } else if (state.debugStatus === 'ended') {
         elements.statusDot.classList.add('success');
         elements.statusLabel.textContent = pauses.length
@@ -261,7 +270,9 @@ export const runtimeMapScript = String.raw`
       const route = state.route;
       const pauses = state.pauses || [];
       const frames = state.frames || [];
-      if (state.debugStatus === 'ended') {
+      if (state.tutorMessage?.kind === 'chat' && (state.chatMessages || []).length) {
+        renderConversation(root, state.chatMessages);
+      } else if (state.debugStatus === 'ended') {
         renderSessionEnded(root, state);
       } else if (state.debugStatus === 'paused' && frames.length) {
         renderPausedOverview(root, state);
@@ -272,6 +283,24 @@ export const runtimeMapScript = String.raw`
       } else {
         renderEmpty(root, state);
       }
+    }
+
+    function renderConversation(root, messages) {
+      const conversation = document.createElement('section');
+      conversation.className = 'conversation';
+      messages.forEach((message) => {
+        const turn = document.createElement('article');
+        turn.className = 'chat-turn ' + message.role;
+        const role = document.createElement('div');
+        role.className = 'chat-role';
+        role.textContent = message.role === 'user' ? '你' : 'Code Cat';
+        const body = document.createElement('div');
+        body.className = 'chat-body';
+        body.textContent = message.text;
+        turn.append(role, body);
+        conversation.appendChild(turn);
+      });
+      root.appendChild(conversation);
     }
 
     function renderEmpty(root, state) {

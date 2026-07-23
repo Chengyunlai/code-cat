@@ -7,7 +7,7 @@ import { RouteNode, SourceLocation, StackFrameSnapshot } from "../domain/model";
 import { createRuntimeMapHtml } from "./runtimeMapHtml";
 
 export interface RuntimeMapActions {
-  locateRoute(question: string): Promise<void>;
+  askQuestion(question: string): Promise<void>;
   startGuidedDebug(question?: string): Promise<void>;
   explainPause(question?: string): Promise<void>;
   revealLocation(location: SourceLocation, frameId?: number): Promise<void>;
@@ -26,6 +26,7 @@ interface WebviewMessage {
   readonly frameId?: unknown;
   readonly command?: unknown;
   readonly version?: unknown;
+  readonly chatMessageCount?: unknown;
 }
 
 export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -37,6 +38,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
   private renderedStateCount = 0;
   private lastReceivedVersion: number | undefined;
   private scriptError: string | undefined;
+  private renderedChatMessageCount = 0;
   private readonly disposables: vscode.Disposable[] = [];
 
   public constructor(
@@ -70,6 +72,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           this.view = undefined;
           this.lastSentFrameCount = 0;
           this.lastAcknowledgedFrameCount = 0;
+          this.renderedChatMessageCount = 0;
         }
       }),
     );
@@ -92,6 +95,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedStateCount: number;
     readonly lastReceivedVersion: number | undefined;
     readonly scriptError: string | undefined;
+    readonly renderedChatMessageCount: number;
   } {
     return {
       resolved: this.view !== undefined,
@@ -103,6 +107,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedStateCount: this.renderedStateCount,
       lastReceivedVersion: this.lastReceivedVersion,
       scriptError: this.scriptError,
+      renderedChatMessageCount: this.renderedChatMessageCount,
     };
   }
 
@@ -197,6 +202,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         modelProvider: this.actions.modelProviderStatus(),
         debugging: Boolean(state.debugSessionId),
         workspaceOpen: Boolean(vscode.workspace.workspaceFolders?.length),
+        chatMessages: state.chatMessages,
       },
     });
   }
@@ -216,6 +222,8 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           typeof value.version === "number" ? value.version : undefined;
         if (this.lastReceivedVersion === this.stateVersion) {
           this.lastAcknowledgedFrameCount = this.lastSentFrameCount;
+          this.renderedChatMessageCount =
+            typeof value.chatMessageCount === "number" ? value.chatMessageCount : 0;
         }
         return;
       case "scriptError":
@@ -223,7 +231,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         return;
       case "locateRoute":
         if (typeof value.question === "string" && value.question.trim()) {
-          await this.actions.locateRoute(value.question.trim());
+          await this.actions.askQuestion(value.question.trim());
         }
         return;
       case "startDebug":

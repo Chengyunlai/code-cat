@@ -7,6 +7,7 @@ const {
   modelProviderSecretName,
   normalizeModelBaseUrl,
 } = require("../../dist/ai/modelProviderSecurity");
+const { SessionStore } = require("../../dist/core/sessionStore");
 
 const TIMEOUT_MS = 30_000;
 
@@ -31,12 +32,14 @@ async function run() {
     "codeCat.__smokeState",
     "codeCat.__showSmokeView",
     "codeCat.__modelProviderStatus",
+    "codeCat.__seedChat",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
 
   await testHttpModelClients();
   await testRoutePreflight();
+  testConversationState();
   await testProviderSpecificSettings();
   testModelProviderSecurity();
 
@@ -46,6 +49,15 @@ async function run() {
     () => vscode.commands.executeCommand("codeCat.__showSmokeView"),
     (shown) => shown === true,
     "the Runtime Map view to resolve",
+  );
+  await vscode.commands.executeCommand("codeCat.__seedChat");
+  await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) =>
+      state?.chatMessageCount === 2 &&
+      state.runtimeMap?.renderedChatMessageCount === 2 &&
+      state.runtimeMap.scriptError === undefined,
+    "the Runtime Map to render a chat exchange",
   );
 
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -176,6 +188,22 @@ async function run() {
   }
 }
 
+function testConversationState() {
+  const store = new SessionStore();
+  try {
+    store.addChatExchange("你好", "你好！想聊聊什么？");
+    assert.deepEqual(
+      store.snapshot().chatMessages.map(({ role, text }) => ({ role, text })),
+      [
+        { role: "user", text: "你好" },
+        { role: "assistant", text: "你好！想聊聊什么？" },
+      ],
+    );
+  } finally {
+    store.dispose();
+  }
+}
+
 async function testRoutePreflight() {
   const cancellation = new vscode.CancellationTokenSource();
   try {
@@ -206,7 +234,6 @@ async function testRoutePreflight() {
       "an unusable project must fail before spending a model request",
     );
 
-    let greetingModelRequests = 0;
     const greetingTutor = new AiTutor(
       {
         readinessIssue: async () => undefined,
@@ -215,20 +242,53 @@ async function testRoutePreflight() {
       },
       {
         request: async () => {
-          greetingModelRequests += 1;
-          return JSON.stringify({ summary: "none", nodes: [] });
+          return JSON.stringify({ kind: "chat", message: "你好！想聊聊什么？" });
         },
       },
     );
-    await assert.rejects(
-      greetingTutor.locateRoute("你好", cancellation.token),
-      /请描述一个具体的代码行为/u,
+    assert.deepEqual(
+      await greetingTutor.answerQuestion("你好", [], cancellation.token),
+      { kind: "chat", answer: "你好！想聊聊什么？" },
     );
-    assert.equal(
-      greetingModelRequests,
-      0,
-      "a greeting must be handled before spending a model request",
+
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "the route-intent test needs the smoke workspace");
+    const checkoutPath = vscode.Uri.joinPath(
+      folder.uri,
+      "order_service",
+      "checkout.py",
+    ).fsPath;
+    const routeTutor = new AiTutor(
+      {
+        readinessIssue: async () => undefined,
+        promptContext: async () => "Python files (1):\norder_service/checkout.py",
+        resolveFile: async () => checkoutPath,
+      },
+      {
+        request: async () =>
+          JSON.stringify({
+            kind: "route",
+            summary: "Checkout route",
+            nodes: [
+              {
+                title: "Checkout",
+                symbol: "checkout",
+                file: "order_service/checkout.py",
+                line: 1,
+                reason: "Entry point",
+                confidence: "high",
+              },
+            ],
+          }),
+      },
     );
+    const routeResult = await routeTutor.answerQuestion(
+      "结账请求经过哪些函数？",
+      [],
+      cancellation.token,
+    );
+    assert.equal(routeResult.kind, "route");
+    assert.equal(routeResult.route.nodes.length, 1);
   } finally {
     cancellation.dispose();
   }

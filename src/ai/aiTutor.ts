@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
-import { DebugPause, RouteNode, RoutePlan, TutorMessage } from "../domain/model";
+import { ChatMessage, DebugPause, RouteNode, RoutePlan, TutorMessage } from "../domain/model";
 import { PythonProjectIndex } from "../project/pythonProjectIndex";
 import { ModelProviderService } from "./modelProviderService";
 
@@ -14,9 +14,15 @@ interface ModelRouteNode {
 }
 
 interface ModelRoutePlan {
+  readonly kind?: unknown;
+  readonly message?: unknown;
   readonly summary?: unknown;
   readonly nodes?: unknown;
 }
+
+export type TutorQuestionResult =
+  | { readonly kind: "chat"; readonly answer: string }
+  | { readonly kind: "route"; readonly route: RoutePlan };
 
 export type TutorGuidanceCode =
   | "no-workspace"
@@ -39,20 +45,62 @@ export class AiTutor {
     private readonly modelProvider: ModelProviderService,
   ) {}
 
+  public async answerQuestion(
+    question: string,
+    conversation: readonly ChatMessage[],
+    token: vscode.CancellationToken,
+  ): Promise<TutorQuestionResult> {
+    await this.ensureProjectReady();
+    const projectContext = await this.projectIndex.promptContext(question);
+    const recentConversation = conversation
+      .slice(-8)
+      .map((message) => `${message.role}: ${message.text.slice(0, 1_000)}`)
+      .join("\n");
+    const response = await this.request(
+      [
+        "You are Code Cat, a concise assistant inside a Python code-understanding tool.",
+        "Decide whether the user wants normal conversation or a concrete code execution path.",
+        "For greetings, thanks, general conversation, or product usage questions, return:",
+        '{"kind":"chat","message":"your answer"}',
+        "For questions about where or how behavior executes in this project, return:",
+        '{"kind":"route","summary":"...","nodes":[{"title":"...","symbol":"...","file":"relative/path.py","line":1,"reason":"...","confidence":"high|medium|low"}]}',
+        "Use only files and symbols present in the supplied project index for route nodes.",
+        "Prefer 2-8 high-value route stops, but return one stop when the project is small.",
+        "Answer in the user's language. Return JSON only, without Markdown fences.",
+        "Do not invent project facts that are absent from the index.",
+        "",
+        recentConversation ? `Recent conversation:\n${recentConversation}\n` : "",
+        `User message: ${question}`,
+        "",
+        projectContext,
+      ].join("\n"),
+      token,
+    );
+    let parsed: ModelRoutePlan;
+    try {
+      parsed = JSON.parse(stripCodeFence(response)) as ModelRoutePlan;
+    } catch {
+      if (isGreetingOnly(question) && response.trim()) {
+        return { kind: "chat", answer: response.trim() };
+      }
+      throw new Error(
+        "模型没有返回可识别的回答。请重新提问；如果持续出现，请更换更适合代码分析的模型。",
+      );
+    }
+    if (parsed.kind === "chat" && typeof parsed.message === "string" && parsed.message.trim()) {
+      return { kind: "chat", answer: parsed.message.trim() };
+    }
+    if (parsed.kind === "route" || Array.isArray(parsed.nodes)) {
+      return { kind: "route", route: await this.parseRoute(question, parsed) };
+    }
+    throw new Error("模型返回了未知的回答类型，请重新提问。");
+  }
+
   public async locateRoute(
     question: string,
     token: vscode.CancellationToken,
   ): Promise<RoutePlan> {
-    const readinessIssue = await this.projectIndex.readinessIssue();
-    if (readinessIssue) {
-      throw new TutorGuidanceError(readinessIssue.kind, readinessIssue.message);
-    }
-    if (isGreetingOnly(question)) {
-      throw new TutorGuidanceError(
-        "ask-code-question",
-        "请描述一个具体的代码行为，例如“登录请求在哪里校验 Token？”或“订单创建会经过哪些函数？”。",
-      );
-    }
+    await this.ensureProjectReady();
     const projectContext = await this.projectIndex.promptContext(question);
     const response = await this.request(
       [
@@ -70,7 +118,7 @@ export class AiTutor {
       ].join("\n"),
       token,
     );
-    return this.parseRoute(question, response);
+    return this.parseRouteResponse(question, response);
   }
 
   public async explainPause(
@@ -114,7 +162,14 @@ export class AiTutor {
     return this.modelProvider.request(prompt, token);
   }
 
-  private async parseRoute(question: string, raw: string): Promise<RoutePlan> {
+  private async ensureProjectReady(): Promise<void> {
+    const readinessIssue = await this.projectIndex.readinessIssue();
+    if (readinessIssue) {
+      throw new TutorGuidanceError(readinessIssue.kind, readinessIssue.message);
+    }
+  }
+
+  private async parseRouteResponse(question: string, raw: string): Promise<RoutePlan> {
     let parsed: ModelRoutePlan;
     try {
       parsed = JSON.parse(stripCodeFence(raw)) as ModelRoutePlan;
@@ -124,6 +179,10 @@ export class AiTutor {
       );
     }
 
+    return this.parseRoute(question, parsed);
+  }
+
+  private async parseRoute(question: string, parsed: ModelRoutePlan): Promise<RoutePlan> {
     if (!Array.isArray(parsed.nodes)) {
       throw new Error("模型返回的代码路径缺少节点。请换一个更具体的问题后重试。");
     }

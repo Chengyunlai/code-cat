@@ -44,9 +44,15 @@ export interface RoutePlan {
 
 export interface TutorMessage {
   readonly id: string;
-  readonly kind: "route" | "pause" | "system" | "error";
+  readonly kind: "route" | "pause" | "chat" | "system" | "error";
   readonly markdown: string;
   readonly pauseId?: string;
+}
+
+export interface ChatMessage {
+  readonly id: string;
+  readonly role: "user" | "assistant";
+  readonly text: string;
 }
 
 export interface SessionState {
@@ -54,6 +60,7 @@ export interface SessionState {
   readonly debugSessionId?: string;
   readonly debugStatus?: "idle" | "running" | "paused" | "ended";
   readonly pauses: readonly DebugPause[];
+  readonly chatMessages: readonly ChatMessage[];
   readonly selectedPauseId?: string;
   readonly selectedFrameId?: number;
   readonly tutorMessage?: TutorMessage;
