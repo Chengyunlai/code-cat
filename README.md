@@ -12,6 +12,8 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 - Redact common credential-like variable names before display or model use.
 - Navigate between route nodes, historical pauses, stack frames, and source code.
 - Ask the model to explain the current pause from runtime evidence.
+- Follow one guided workspace with task/debug status, current lesson, execution-path,
+  call-stack, and variable tabs, plus a contextual question box fixed at the bottom.
 
 ## Install in VS Code
 
@@ -123,6 +125,28 @@ Set `CODE_CAT_VSCODE_EXTENSIONS_DIR` only when the isolated target itself must m
 `npm run smoke:vscode` launches an isolated Extension Host using the installed VS Code application and explicit Microsoft Python extension dependencies. It verifies activation, linked breakpoint creation and restoration, debugpy startup, real pauses, captured stack frames and variables, native call-stack data, Runtime Map rendering, and Step Over.
 
 The route is a hypothesis; the runtime trace is evidence. Code Cat deliberately displays both.
+
+## IDE support and repository layout
+
+The working prototype currently supports **VS Code only**. PyCharm support should stay in
+this repository rather than starting a separate product repository: the project index,
+route/session domain model, AI prompts, redaction rules, and IDE-neutral message contracts can
+be shared, while each IDE keeps its own adapter and UI package.
+
+A future cross-IDE layout can evolve toward:
+
+```text
+packages/core/             shared Python indexing, routes, sessions, and tutor contracts
+packages/vscode-extension/ current VS Code/debugpy adapter and Webview UI
+packages/jetbrains-plugin/ future PyCharm debugger adapter and JetBrains UI
+```
+
+Do not create the PyCharm package until the shared contracts have stabilized in the VS Code
+vertical slice. JetBrains plugins use a different SDK, build system, debugger APIs, and UI
+toolkit, so sharing the whole extension implementation would create more coupling than reuse.
+If publishing, release automation, or contributor ownership later diverges substantially, the
+JetBrains package can then be split into its own repository without changing the shared
+protocol boundary.
 
 ## Architecture notes
 

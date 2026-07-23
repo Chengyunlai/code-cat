@@ -107,6 +107,7 @@ async function run() {
       () => vscode.commands.executeCommand("codeCat.__smokeState"),
       (state) =>
         state?.debugSessionId === session.id &&
+        state.debugStatus === "paused" &&
         state.pauseCount >= 1 &&
         state.lastPauseFrameCount > 0 &&
         state.lastPauseVariableCount > 0 &&
@@ -125,15 +126,31 @@ async function run() {
       (candidate) => candidate && "frameId" in candidate && candidate.session.id === session.id,
       "Step Over to reach the next paused frame",
     );
-    await vscode.commands.executeCommand("codeCat.stepOver");
+    await Promise.all([
+      vscode.commands.executeCommand("codeCat.stepOver"),
+      vscode.commands.executeCommand("codeCat.stepOver"),
+    ]);
     await stepped;
     await waitForValue(
       () => vscode.commands.executeCommand("codeCat.__smokeState"),
-      (state) => state?.pauseCount >= 2,
-      "Code Cat to capture the Step Over pause",
+      (state) =>
+        state?.pauseCount === firstCodeCatState.pauseCount + 1 &&
+        state.debugStatus === "paused",
+      "Code Cat to capture exactly one pause from duplicate Step Over requests",
     );
+    await vscode.debug.stopDebugging(session);
+    await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) =>
+        state?.debugStatus === "ended" &&
+        state.debugSessionId === undefined &&
+        state.runtimeMap?.lastReceivedVersion === state.runtimeMap.stateVersion &&
+        state.runtimeMap.scriptError === undefined,
+      "Code Cat to mark the guided debug session as ended",
+    );
+    session = undefined;
     console.log(
-      "Code Cat smoke passed: activation, linked breakpoint, debug snapshots, both views, and Step Over.",
+      "Code Cat smoke passed: activation, linked breakpoint, debug snapshots, both views, and duplicate-control suppression.",
     );
   } finally {
     if (session) {

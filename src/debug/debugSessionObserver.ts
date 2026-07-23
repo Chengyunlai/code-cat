@@ -83,7 +83,16 @@ export class DebugSessionObserver implements vscode.Disposable {
   }
 
   private observeAdapterMessage(session: vscode.DebugSession, message: unknown): void {
-    if (this.store.snapshot().debugSessionId !== session.id || !isStoppedEvent(message)) {
+    if (this.store.snapshot().debugSessionId !== session.id) {
+      return;
+    }
+
+    if (isContinuedEvent(message)) {
+      this.captureVersions.set(session.id, (this.captureVersions.get(session.id) ?? 0) + 1);
+      this.store.markDebugSessionRunning(session.id);
+      return;
+    }
+    if (!isStoppedEvent(message)) {
       return;
     }
 
@@ -142,6 +151,14 @@ function isStoppedEvent(message: unknown): message is DapEvent & { body: Stopped
   }
   const candidate = message as DapEvent;
   return candidate.type === "event" && candidate.event === "stopped" && isObject(candidate.body);
+}
+
+function isContinuedEvent(message: unknown): message is DapEvent {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+  const candidate = message as DapEvent;
+  return candidate.type === "event" && candidate.event === "continued";
 }
 
 async function resolveThreadId(

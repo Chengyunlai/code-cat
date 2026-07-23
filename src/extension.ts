@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { AiTutor } from "./ai/aiTutor";
 import { revealLocation } from "./core/locations";
+import { SessionActionCoordinator } from "./core/sessionActionCoordinator";
 import { SessionStore } from "./core/sessionStore";
 import { toggleSourceBreakpoint } from "./debug/breakpoints";
 import { DebugSessionObserver } from "./debug/debugSessionObserver";
@@ -16,11 +17,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const tutor = new AiTutor(projectIndex);
   const observer = new DebugSessionObserver(store);
   const callStackTree = new CallStackTree(store);
+  const actionCoordinator = new SessionActionCoordinator(store);
 
   const actions: RuntimeMapActions = {
-    locateRoute: (question) => locateRoute(store, tutor, question),
-    startGuidedDebug: (question) => startGuidedDebug(store, tutor, observer, question),
-    explainPause: (question) => explainCurrentPause(store, tutor, question),
+    locateRoute: (question) =>
+      actionCoordinator.run("route", () => locateRoute(store, tutor, question)),
+    startGuidedDebug: (question) =>
+      actionCoordinator.run("debug", () =>
+        startGuidedDebug(store, tutor, observer, question),
+      ),
+    explainPause: (question) =>
+      actionCoordinator.run("pause", () => explainCurrentPause(store, tutor, question)),
     revealLocation: async (location, frameId) => {
       if (frameId !== undefined) {
         store.selectFrame(frameId);
@@ -28,7 +35,8 @@ export function activate(context: vscode.ExtensionContext): void {
       await revealLocation(location);
     },
     toggleBreakpoint: (location) => toggleSourceBreakpoint(location),
-    runDebugCommand,
+    runDebugCommand: (command) =>
+      actionCoordinator.run("control", () => runDebugCommand(store, command)),
   };
   const runtimeMap = new RuntimeMapView(context.extensionUri, store, actions);
 
@@ -48,16 +56,13 @@ export function activate(context: vscode.ExtensionContext): void {
         ignoreFocusOut: true,
       });
       if (question?.trim()) {
-        await locateRoute(store, tutor, question.trim());
+        await actions.locateRoute(question.trim());
       }
     }),
     vscode.commands.registerCommand(
       "codeCat.startGuidedDebug",
       async (suppliedQuestion?: unknown) => {
-        await startGuidedDebug(
-          store,
-          tutor,
-          observer,
+        await actions.startGuidedDebug(
           typeof suppliedQuestion === "string"
             ? suppliedQuestion
             : store.snapshot().route?.question,
@@ -65,9 +70,15 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
     vscode.commands.registerCommand("codeCat.explainPause", async () => {
-      await explainCurrentPause(store, tutor);
+      await actions.explainPause();
     }),
-    vscode.commands.registerCommand("codeCat.clearSession", () => store.clear()),
+    vscode.commands.registerCommand("codeCat.clearSession", () => {
+      if (!store.clear()) {
+        void vscode.window.showInformationMessage(
+          "Wait for the current Code Cat request to finish before clearing the session.",
+        );
+      }
+    }),
     vscode.commands.registerCommand(
       "codeCat.revealLocation",
       async (location: unknown, frameId?: unknown) => {
@@ -85,15 +96,16 @@ export function activate(context: vscode.ExtensionContext): void {
         toggleSourceBreakpoint(location);
       }
     }),
-    vscode.commands.registerCommand("codeCat.continue", () => runDebugCommand("continue")),
-    vscode.commands.registerCommand("codeCat.stepInto", () => runDebugCommand("stepInto")),
-    vscode.commands.registerCommand("codeCat.stepOver", () => runDebugCommand("stepOver")),
+    vscode.commands.registerCommand("codeCat.continue", () => actions.runDebugCommand("continue")),
+    vscode.commands.registerCommand("codeCat.stepInto", () => actions.runDebugCommand("stepInto")),
+    vscode.commands.registerCommand("codeCat.stepOver", () => actions.runDebugCommand("stepOver")),
   );
 
   if (context.extensionMode === vscode.ExtensionMode.Test) {
     context.subscriptions.push(
       vscode.commands.registerCommand("codeCat.__smokeState", () => ({
         debugSessionId: store.snapshot().debugSessionId,
+        debugStatus: store.snapshot().debugStatus,
         pauseCount: store.snapshot().pauses.length,
         lastPauseFrameCount: store.selectedPause()?.frames.length ?? 0,
         lastPauseVariableCount: store.selectedPause()?.variables.length ?? 0,
@@ -295,10 +307,26 @@ async function chooseDebugConfiguration(
 }
 
 async function runDebugCommand(
+  store: SessionStore,
   command: "continue" | "stepInto" | "stepOver",
 ): Promise<void> {
-  if (!vscode.debug.activeDebugSession) {
+  const session = vscode.debug.activeDebugSession;
+  const state = store.snapshot();
+  const selectedPause = store.selectedPause();
+  const livePause = state.pauses.at(-1);
+  if (!session) {
     void vscode.window.showInformationMessage("There is no active debug session.");
+    return;
+  }
+  if (
+    state.debugSessionId !== session.id ||
+    state.debugStatus !== "paused" ||
+    !livePause ||
+    selectedPause?.id !== livePause.id
+  ) {
+    void vscode.window.showInformationMessage(
+      "Return to the current pause before continuing or stepping the debugger.",
+    );
     return;
   }
   const commands = {
@@ -306,7 +334,13 @@ async function runDebugCommand(
     stepInto: "workbench.action.debug.stepInto",
     stepOver: "workbench.action.debug.stepOver",
   } as const;
-  await vscode.commands.executeCommand(commands[command]);
+  store.markDebugSessionRunning(session.id);
+  try {
+    await vscode.commands.executeCommand(commands[command]);
+  } catch (error) {
+    store.restoreDebugSessionPaused(session.id);
+    throw error;
+  }
 }
 
 function handleTutorError(store: SessionStore, error: unknown): void {

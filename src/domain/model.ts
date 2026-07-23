@@ -52,11 +52,13 @@ export interface TutorMessage {
 export interface SessionState {
   readonly route?: RoutePlan;
   readonly debugSessionId?: string;
+  readonly debugStatus?: "idle" | "running" | "paused" | "ended";
   readonly pauses: readonly DebugPause[];
   readonly selectedPauseId?: string;
   readonly selectedFrameId?: number;
   readonly tutorMessage?: TutorMessage;
   readonly busyMessage?: string;
+  readonly requestKind?: "route" | "pause" | "debug" | "control";
 }
 
 export interface DapStackFrame {

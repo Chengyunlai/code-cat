@@ -7,6 +7,8 @@ import {
   TutorMessage,
 } from "../domain/model";
 
+export type SessionRequestKind = NonNullable<SessionState["requestKind"]>;
+
 export class SessionStore implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<SessionState>();
   private state: SessionState = { pauses: [] };
@@ -24,6 +26,7 @@ export class SessionStore implements vscode.Disposable {
       pauses: [],
       selectedPauseId: undefined,
       selectedFrameId: undefined,
+      debugStatus: this.state.debugSessionId ? this.state.debugStatus : "idle",
       busyMessage: undefined,
       tutorMessage: {
         id: randomUUID(),
@@ -42,8 +45,8 @@ export class SessionStore implements vscode.Disposable {
       pauses: [...this.state.pauses, pause],
       selectedPauseId: pause.id,
       selectedFrameId: pause.frames[0]?.id,
+      debugStatus: "paused",
       tutorMessage: undefined,
-      busyMessage: undefined,
     });
   }
 
@@ -56,7 +59,6 @@ export class SessionStore implements vscode.Disposable {
       selectedPauseId: pauseId,
       selectedFrameId: frameId ?? pause?.frames[0]?.id,
       tutorMessage,
-      busyMessage: undefined,
     });
   }
 
@@ -71,6 +73,20 @@ export class SessionStore implements vscode.Disposable {
     );
   }
 
+  public markDebugSessionRunning(sessionId: string): void {
+    if (this.state.debugSessionId !== sessionId || this.state.debugStatus === "running") {
+      return;
+    }
+    this.update({ ...this.state, debugStatus: "running" });
+  }
+
+  public restoreDebugSessionPaused(sessionId: string): void {
+    if (this.state.debugSessionId !== sessionId || !this.state.pauses.length) {
+      return;
+    }
+    this.update({ ...this.state, debugStatus: "paused" });
+  }
+
   public beginDebugSession(sessionId: string): void {
     if (this.state.debugSessionId === sessionId) {
       return;
@@ -78,6 +94,7 @@ export class SessionStore implements vscode.Disposable {
     this.update({
       ...this.state,
       debugSessionId: sessionId,
+      debugStatus: "running",
       pauses: [],
       selectedPauseId: undefined,
       selectedFrameId: undefined,
@@ -90,22 +107,50 @@ export class SessionStore implements vscode.Disposable {
     if (this.state.debugSessionId !== sessionId) {
       return;
     }
-    this.update({ ...this.state, debugSessionId: undefined, busyMessage: undefined });
+    this.update({
+      ...this.state,
+      debugSessionId: undefined,
+      debugStatus: "ended",
+    });
   }
 
   public setTutorMessage(message: TutorMessage): void {
     if (message.pauseId && message.pauseId !== this.state.selectedPauseId) {
+      this.update({ ...this.state, busyMessage: undefined });
       return;
     }
-    this.update({ ...this.state, tutorMessage: message, busyMessage: undefined });
+    this.update({
+      ...this.state,
+      tutorMessage: message,
+      busyMessage: undefined,
+    });
   }
 
   public setBusy(message?: string): void {
     this.update({ ...this.state, busyMessage: message });
   }
 
-  public clear(): void {
-    this.update({ pauses: [] });
+  public beginRequest(kind: SessionRequestKind): boolean {
+    if (this.state.requestKind) {
+      return false;
+    }
+    this.update({ ...this.state, requestKind: kind });
+    return true;
+  }
+
+  public endRequest(kind: SessionRequestKind): void {
+    if (this.state.requestKind !== kind) {
+      return;
+    }
+    this.update({ ...this.state, requestKind: undefined });
+  }
+
+  public clear(): boolean {
+    if (this.state.requestKind) {
+      return false;
+    }
+    this.update({ pauses: [], debugStatus: "idle" });
+    return true;
   }
 
   public dispose(): void {
