@@ -1,0 +1,152 @@
+{
+  "name": "code-cat",
+  "displayName": "Code Cat",
+  "description": "A debug-driven AI tutor for understanding Python code paths in VS Code.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "extensionDependencies": [
+    "ms-python.python",
+    "ms-python.debugpy"
+  ],
+  "categories": [
+    "Debuggers",
+    "Education",
+    "Visualization"
+  ],
+  "keywords": [
+    "python",
+    "debugger",
+    "code-understanding",
+    "visualization",
+    "ai-tutor"
+  ],
+  "activationEvents": [
+    "onView:codeCat.runtimeMap",
+    "onView:codeCat.callStack",
+    "onCommand:codeCat.startGuidedDebug"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeCat.startGuidedDebug",
+        "title": "Code Cat: Start Guided Debug"
+      },
+      {
+        "command": "codeCat.askProject",
+        "title": "Code Cat: Locate a Code Path"
+      },
+      {
+        "command": "codeCat.explainPause",
+        "title": "Code Cat: Explain Current Pause"
+      },
+      {
+        "command": "codeCat.clearSession",
+        "title": "Code Cat: Clear Session"
+      },
+      {
+        "command": "codeCat.revealLocation",
+        "title": "Code Cat: Reveal Source"
+      },
+      {
+        "command": "codeCat.toggleBreakpoint",
+        "title": "Code Cat: Toggle Linked Breakpoint"
+      },
+      {
+        "command": "codeCat.continue",
+        "title": "Code Cat: Continue"
+      },
+      {
+        "command": "codeCat.stepInto",
+        "title": "Code Cat: Step Into"
+      },
+      {
+        "command": "codeCat.stepOver",
+        "title": "Code Cat: Step Over"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeCat",
+          "title": "Code Cat",
+          "icon": "media/code-cat.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeCat": [
+        {
+          "id": "codeCat.runtimeMap",
+          "name": "Runtime Map",
+          "type": "webview"
+        },
+        {
+          "id": "codeCat.callStack",
+          "name": "Call Stack"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "codeCat.startGuidedDebug",
+          "when": "view == codeCat.runtimeMap",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeCat.clearSession",
+          "when": "view == codeCat.runtimeMap",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codeCat.explainPause",
+          "when": "view == codeCat.callStack",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Code Cat",
+      "properties": {
+        "codeCat.maxIndexedFiles": {
+          "type": "number",
+          "default": 400,
+          "minimum": 20,
+          "maximum": 2000,
+          "description": "Maximum number of Python files included in the structural project index."
+        },
+        "codeCat.maxStackFrames": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 100,
+          "description": "Maximum number of stack frames captured at a debug pause."
+        },
+        "codeCat.maxVariables": {
+          "type": "number",
+          "default": 40,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "Maximum number of variables captured from the top stack frame."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc -w -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "package": "vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.105.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.9.3"
+  }
+}
