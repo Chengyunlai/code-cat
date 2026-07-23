@@ -33,6 +33,7 @@ async function run() {
     "codeCat.__showSmokeView",
     "codeCat.__modelProviderStatus",
     "codeCat.__seedChat",
+    "codeCat.__seedTutorError",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
@@ -56,8 +57,18 @@ async function run() {
     (state) =>
       state?.chatMessageCount === 2 &&
       state.runtimeMap?.renderedChatMessageCount === 2 &&
+      state.runtimeMap.renderedContentMode === "chat" &&
       state.runtimeMap.scriptError === undefined,
     "the Runtime Map to render a chat exchange",
+  );
+  await vscode.commands.executeCommand("codeCat.__seedTutorError");
+  await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) =>
+      state?.runtimeMap?.renderedContentMode === "message" &&
+      state.runtimeMap.tutorMessageRendered === true &&
+      state.runtimeMap.scriptError === undefined,
+    "the Runtime Map to render tutor feedback in its main content area",
   );
 
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -221,6 +232,67 @@ function testConversationState() {
       ],
     );
     assert.equal(store.snapshot().contentMode, "route");
+
+    store.setTutorMessage({
+      id: "model-error",
+      kind: "error",
+      markdown: "模型暂时不可用，请稍后重试。",
+    });
+    assert.equal(
+      store.snapshot().contentMode,
+      "message",
+      "a tutor error must replace chat or route content instead of being hidden behind it",
+    );
+
+    store.beginDebugSession("debug-session");
+    store.recordPause({
+      id: "pause-1",
+      sessionId: "debug-session",
+      reason: "breakpoint",
+      threadId: 1,
+      recordedAt: "2026-07-23T00:00:00.000Z",
+      frames: [
+        {
+          id: 101,
+          name: "checkout",
+          location: { path: "/tmp/checkout.py", line: 8, column: 1 },
+        },
+      ],
+      variables: [],
+    });
+    assert.equal(store.snapshot().contentMode, "debug");
+    store.addChatExchange("现在发生了什么？", "调试器停在 checkout。");
+    assert.equal(store.snapshot().contentMode, "chat");
+    store.setTutorMessage({
+      id: "pause-explanation",
+      kind: "pause",
+      markdown: "当前正在处理结账。",
+      pauseId: "pause-1",
+    });
+    assert.equal(
+      store.snapshot().contentMode,
+      "debug",
+      "a pause explanation must leave chat mode so the explanation is visible",
+    );
+
+    store.setRoute({
+      question: "支付失败会经过哪些函数？",
+      summary: "支付失败从 checkout 进入支付适配器。",
+      nodes: [
+        {
+          id: "payment-route-node",
+          title: "Payment",
+          location: { path: "/tmp/checkout.py", line: 12, column: 1 },
+          reason: "Payment boundary",
+          confidence: "high",
+        },
+      ],
+    });
+    assert.equal(store.snapshot().contentMode, "route");
+    assert.equal(store.snapshot().debugStatus, "paused");
+    assert.equal(store.snapshot().pauses.length, 1);
+    assert.equal(store.snapshot().selectedPauseId, "pause-1");
+    assert.equal(store.snapshot().selectedFrameId, 101);
   } finally {
     store.dispose();
   }

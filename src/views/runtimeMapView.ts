@@ -27,6 +27,8 @@ interface WebviewMessage {
   readonly command?: unknown;
   readonly version?: unknown;
   readonly chatMessageCount?: unknown;
+  readonly contentMode?: unknown;
+  readonly tutorMessageRendered?: unknown;
 }
 
 export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -39,6 +41,8 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
   private lastReceivedVersion: number | undefined;
   private scriptError: string | undefined;
   private renderedChatMessageCount = 0;
+  private renderedContentMode: string | undefined;
+  private tutorMessageRendered = false;
   private readonly disposables: vscode.Disposable[] = [];
 
   public constructor(
@@ -73,6 +77,8 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           this.lastSentFrameCount = 0;
           this.lastAcknowledgedFrameCount = 0;
           this.renderedChatMessageCount = 0;
+          this.renderedContentMode = undefined;
+          this.tutorMessageRendered = false;
         }
       }),
     );
@@ -96,6 +102,8 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly lastReceivedVersion: number | undefined;
     readonly scriptError: string | undefined;
     readonly renderedChatMessageCount: number;
+    readonly renderedContentMode: string | undefined;
+    readonly tutorMessageRendered: boolean;
   } {
     return {
       resolved: this.view !== undefined,
@@ -108,6 +116,8 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       lastReceivedVersion: this.lastReceivedVersion,
       scriptError: this.scriptError,
       renderedChatMessageCount: this.renderedChatMessageCount,
+      renderedContentMode: this.renderedContentMode,
+      tutorMessageRendered: this.tutorMessageRendered,
     };
   }
 
@@ -225,6 +235,9 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           this.lastAcknowledgedFrameCount = this.lastSentFrameCount;
           this.renderedChatMessageCount =
             typeof value.chatMessageCount === "number" ? value.chatMessageCount : 0;
+          this.renderedContentMode =
+            typeof value.contentMode === "string" ? value.contentMode : undefined;
+          this.tutorMessageRendered = value.tutorMessageRendered === true;
         }
         return;
       case "scriptError":

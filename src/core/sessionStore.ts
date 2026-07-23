@@ -22,6 +22,7 @@ export class SessionStore implements vscode.Disposable {
   }
 
   public setRoute(route: RoutePlan): void {
+    const preserveDebugSnapshot = Boolean(this.state.debugSessionId);
     this.update({
       ...this.state,
       chatMessages: appendChatExchange(
@@ -30,9 +31,9 @@ export class SessionStore implements vscode.Disposable {
         route.summary,
       ),
       route,
-      pauses: [],
-      selectedPauseId: undefined,
-      selectedFrameId: undefined,
+      pauses: preserveDebugSnapshot ? this.state.pauses : [],
+      selectedPauseId: preserveDebugSnapshot ? this.state.selectedPauseId : undefined,
+      selectedFrameId: preserveDebugSnapshot ? this.state.selectedFrameId : undefined,
       debugStatus: this.state.debugSessionId ? this.state.debugStatus : "idle",
       busyMessage: undefined,
       tutorMessage: {
@@ -55,6 +56,7 @@ export class SessionStore implements vscode.Disposable {
       selectedFrameId: pause.frames[0]?.id,
       debugStatus: "paused",
       tutorMessage: undefined,
+      contentMode: "debug",
     });
   }
 
@@ -67,11 +69,12 @@ export class SessionStore implements vscode.Disposable {
       selectedPauseId: pauseId,
       selectedFrameId: frameId ?? pause?.frames[0]?.id,
       tutorMessage,
+      contentMode: "debug",
     });
   }
 
   public selectFrame(frameId: number): void {
-    this.update({ ...this.state, selectedFrameId: frameId });
+    this.update({ ...this.state, selectedFrameId: frameId, contentMode: "debug" });
   }
 
   public selectedPause(): DebugPause | undefined {
@@ -85,14 +88,14 @@ export class SessionStore implements vscode.Disposable {
     if (this.state.debugSessionId !== sessionId || this.state.debugStatus === "running") {
       return;
     }
-    this.update({ ...this.state, debugStatus: "running" });
+    this.update({ ...this.state, debugStatus: "running", contentMode: "debug" });
   }
 
   public restoreDebugSessionPaused(sessionId: string): void {
     if (this.state.debugSessionId !== sessionId || !this.state.pauses.length) {
       return;
     }
-    this.update({ ...this.state, debugStatus: "paused" });
+    this.update({ ...this.state, debugStatus: "paused", contentMode: "debug" });
   }
 
   public beginDebugSession(sessionId: string): void {
@@ -119,6 +122,7 @@ export class SessionStore implements vscode.Disposable {
       ...this.state,
       debugSessionId: undefined,
       debugStatus: "ended",
+      contentMode: "debug",
     });
   }
 
@@ -130,6 +134,12 @@ export class SessionStore implements vscode.Disposable {
     this.update({
       ...this.state,
       tutorMessage: message,
+      contentMode:
+        message.kind === "route"
+          ? "route"
+          : message.kind === "pause"
+            ? "debug"
+            : "message",
       busyMessage: undefined,
     });
   }

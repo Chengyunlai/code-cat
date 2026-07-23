@@ -64,7 +64,7 @@ export interface SessionState {
   readonly selectedPauseId?: string;
   readonly selectedFrameId?: number;
   readonly tutorMessage?: TutorMessage;
-  readonly contentMode?: "chat" | "route";
+  readonly contentMode?: "chat" | "route" | "debug" | "message";
   readonly busyMessage?: string;
   readonly requestKind?: "question" | "pause" | "debug" | "control" | "model";
 }

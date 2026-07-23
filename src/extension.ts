@@ -153,6 +153,13 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("codeCat.__seedChat", () => {
         store.addChatExchange("你好", "你好！你可以和我聊天，也可以直接询问项目代码。");
       }),
+      vscode.commands.registerCommand("codeCat.__seedTutorError", () => {
+        store.setTutorMessage({
+          id: randomUUID(),
+          kind: "error",
+          markdown: "模型暂时不可用，请稍后重试。",
+        });
+      }),
     );
   }
 }
@@ -168,7 +175,7 @@ async function answerQuestion(
   try {
     const result = await vscode.window.withProgress(
       {
-        location: vscode.ProgressLocation.Notification,
+        location: vscode.ProgressLocation.Window,
         title: "Code Cat is answering",
         cancellable: true,
       },
@@ -195,7 +202,7 @@ async function locateRoute(
   try {
     const route = await vscode.window.withProgress(
       {
-        location: vscode.ProgressLocation.Notification,
+        location: vscode.ProgressLocation.Window,
         title: "Code Cat is locating the code path",
         cancellable: true,
       },
@@ -226,7 +233,7 @@ async function explainCurrentPause(
   try {
     const message = await vscode.window.withProgress(
       {
-        location: vscode.ProgressLocation.Notification,
+        location: vscode.ProgressLocation.Window,
         title: "Code Cat is explaining the current pause",
         cancellable: true,
       },
@@ -412,18 +419,11 @@ function handleTutorError(store: SessionStore, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof TutorGuidanceError) {
     store.setTutorMessage({ id: randomUUID(), kind: "system", markdown: message });
-    const action = error.code === "no-workspace" ? "打开文件夹" : undefined;
-    void vscode.window
-      .showInformationMessage(`Code Cat: ${message}`, ...(action ? [action] : []))
-      .then(async (selection) => {
-        if (selection === "打开文件夹") {
-          await vscode.commands.executeCommand("vscode.openFolder");
-        }
-      });
+    void vscode.commands.executeCommand("workbench.view.extension.codeCat");
     return;
   }
   store.setTutorMessage({ id: randomUUID(), kind: "error", markdown: message });
-  void vscode.window.showErrorMessage(`Code Cat: ${message}`);
+  void vscode.commands.executeCommand("workbench.view.extension.codeCat");
 }
 
 async function runModelProviderCommand(action: () => Promise<void>): Promise<void> {

@@ -79,6 +79,11 @@ export const runtimeMapScript = String.raw`
           type: 'renderedState',
           version: event.data.version,
           chatMessageCount: (currentState.chatMessages || []).length,
+          contentMode: currentState.contentMode,
+          tutorMessageRendered: Boolean(
+            currentState.tutorMessage &&
+            elements.content.textContent.includes(currentState.tutorMessage.markdown)
+          ),
         });
       }
     });
@@ -196,6 +201,11 @@ export const runtimeMapScript = String.raw`
       } else if (state.contentMode === 'chat') {
         elements.statusDot.classList.add('primary');
         elements.statusLabel.textContent = '对话已更新';
+      } else if (state.contentMode === 'message' && state.tutorMessage) {
+        elements.statusDot.classList.add('primary');
+        elements.statusLabel.textContent = state.tutorMessage.kind === 'error'
+          ? '请求未完成'
+          : '需要你的操作';
       } else if (state.debugStatus === 'ended') {
         elements.statusDot.classList.add('success');
         elements.statusLabel.textContent = pauses.length
@@ -263,7 +273,9 @@ export const runtimeMapScript = String.raw`
       const route = state.route;
       const pauses = state.pauses || [];
       const frames = state.frames || [];
-      if (state.contentMode === 'chat' && (state.chatMessages || []).length) {
+      if (state.contentMode === 'message' && state.tutorMessage) {
+        renderTutorMessage(root, state);
+      } else if (state.contentMode === 'chat' && (state.chatMessages || []).length) {
         renderConversation(root, state.chatMessages, state);
       } else if (state.debugStatus === 'ended') {
         renderSessionEnded(root, state);
@@ -275,6 +287,25 @@ export const runtimeMapScript = String.raw`
         renderRouteReady(root, state);
       } else {
         renderEmpty(root, state);
+      }
+    }
+
+    function renderTutorMessage(root, state) {
+      const message = state.tutorMessage;
+      const isError = message.kind === 'error';
+      const heading = sectionHeading(
+        isError ? '这次请求没有完成' : '还需要一步',
+        isError ? '你可以修正配置或换个问法后重试' : 'Code Cat 没有发起模型请求',
+      );
+      const copy = document.createElement('p');
+      copy.className = 'lesson-copy notice' + (isError ? ' error' : '');
+      copy.textContent = message.markdown;
+      root.append(heading, copy);
+      if (!state.workspaceOpen) {
+        const actions = document.createElement('div');
+        actions.className = 'action-row';
+        actions.appendChild(actionButton('打开文件夹', 'primary', () => vscode.postMessage({ type: 'openFolder' })));
+        root.appendChild(actions);
       }
     }
 
