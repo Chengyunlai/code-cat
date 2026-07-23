@@ -625,6 +625,7 @@ function createHtml(webview: vscode.Webview): string {
       pathCount: document.getElementById('path-count'),
       pauseRail: document.getElementById('pause-rail'),
       question: document.getElementById('question'),
+      send: document.getElementById('locate'),
       sessionTitle: document.getElementById('session-title'),
       stackCount: document.getElementById('stack-count'),
       statusDot: document.getElementById('status-dot'),
@@ -670,7 +671,6 @@ function createHtml(webview: vscode.Webview): string {
       const frames = state.frames || [];
       const variables = state.variables || [];
       const pauses = state.pauses || [];
-      if (route && !elements.question.value) elements.question.value = route.question;
       elements.sessionTitle.textContent = route?.question || 'Python 代码阅读助手';
       elements.pathCount.textContent = route ? String(route.nodes.length) : '';
       elements.stackCount.textContent = frames.length ? String(frames.length) : '';
@@ -684,6 +684,14 @@ function createHtml(webview: vscode.Webview): string {
       elements.composerHint.textContent = frames.length
         ? '当前暂停追问 · ⌘/Ctrl + Enter 发送'
         : '⌘/Ctrl + Enter 定位代码路径';
+      elements.question.placeholder = frames.length
+        ? '为什么停在这里？'
+        : route
+          ? '输入新的代码问题'
+          : '你想理解哪段代码？';
+      const sendLabel = frames.length ? '解释当前暂停' : '定位代码路径';
+      elements.send.title = sendLabel;
+      elements.send.setAttribute('aria-label', sendLabel);
       if (state.busyMessage) renderBusy(view, state.busyMessage, state);
       else if (activeTab === 'path') renderPath(view, route);
       else if (activeTab === 'stack') renderStack(view, frames);
@@ -703,6 +711,7 @@ function createHtml(webview: vscode.Webview): string {
       } else {
         vscode.postMessage({ type: 'locateRoute', question });
       }
+      elements.question.value = '';
     }
 
     function updateTabs() {
