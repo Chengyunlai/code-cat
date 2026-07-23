@@ -16,6 +16,10 @@ export interface PythonProjectSnapshot {
   readonly truncated: boolean;
 }
 
+type WorkspaceRelativePythonPath = string & {
+  readonly __workspaceRelativePythonPath: unique symbol;
+};
+
 const SYMBOL_PATTERN = /^(\s*)(async\s+def|def|class)\s+([A-Za-z_]\w*)\s*([^:]*)\s*:/;
 const EXCLUDE_GLOB = "**/{.git,.venv,venv,node_modules,__pycache__,dist,build,.tox,.mypy_cache,.pytest_cache}/**";
 
@@ -121,7 +125,10 @@ export class PythonProjectIndex implements vscode.Disposable {
   }
 
   public async resolveFile(candidate: string): Promise<string | undefined> {
-    const normalizedCandidate = candidate.replaceAll("\\", "/").replace(/^\.\//u, "");
+    const normalizedCandidate = parseWorkspaceRelativePythonPath(candidate);
+    if (!normalizedCandidate) {
+      return undefined;
+    }
     const project = await this.snapshot();
     const exact = project.symbols.find(
       (symbol) => symbol.file.replaceAll("\\", "/") === normalizedCandidate,
@@ -160,6 +167,23 @@ export class PythonProjectIndex implements vscode.Disposable {
   }
 }
 
+function parseWorkspaceRelativePythonPath(
+  candidate: string,
+): WorkspaceRelativePythonPath | undefined {
+  const slashPath = candidate.replaceAll("\\", "/").replace(/^\.\//u, "");
+  if (
+    !slashPath ||
+    slashPath.includes("\0") ||
+    path.posix.isAbsolute(slashPath) ||
+    path.win32.isAbsolute(candidate) ||
+    slashPath.split("/").includes("..") ||
+    !slashPath.toLowerCase().endsWith(".py")
+  ) {
+    return undefined;
+  }
+  return path.posix.normalize(slashPath) as WorkspaceRelativePythonPath;
+}
+
 function tokenizeQuestion(question: string): readonly string[] {
   return [...new Set(question.toLowerCase().match(/[a-z_][a-z0-9_]{2,}/gu) ?? [])];
 }
@@ -182,4 +206,3 @@ function deduplicateSymbols(
     return true;
   });
 }
-

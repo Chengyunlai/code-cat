@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { normalizePath } from "../core/locations";
 import { SessionStore } from "../core/sessionStore";
 import { hasSourceBreakpoint } from "../debug/breakpoints";
-import { DebugPause, SourceLocation, StackFrameSnapshot } from "../domain/model";
+import { SourceLocation, StackFrameSnapshot } from "../domain/model";
 
 export interface RuntimeMapActions {
   locateRoute(question: string): Promise<void>;
@@ -62,7 +62,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       return;
     }
     const state = this.store.snapshot();
-    const currentPause = selectedPause(state.pauses, state.selectedPauseId);
+    const currentPause = this.store.selectedPause();
     const currentPaths = new Set(
       (currentPause?.frames ?? [])
         .flatMap((frame) => (frame.location ? [normalizePath(frame.location.path)] : [])),
@@ -111,7 +111,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         variables: currentPause?.variables ?? [],
         tutorMessage: state.tutorMessage,
         busyMessage: state.busyMessage,
-        debugging: Boolean(vscode.debug.activeDebugSession),
+        debugging: Boolean(state.debugSessionId),
       },
     });
   }
@@ -164,10 +164,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         if (typeof value.frameId !== "number") {
           return;
         }
-        const pause = selectedPause(
-          this.store.snapshot().pauses,
-          this.store.snapshot().selectedPauseId,
-        );
+        const pause = this.store.selectedPause();
         const frame = pause?.frames.find((candidate) => candidate.id === value.frameId);
         if (frame?.location) {
           this.store.selectFrame(frame.id);
@@ -188,13 +185,6 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         return;
     }
   }
-}
-
-function selectedPause(
-  pauses: readonly DebugPause[],
-  selectedId: string | undefined,
-): DebugPause | undefined {
-  return pauses.find((pause) => pause.id === selectedId) ?? pauses.at(-1);
 }
 
 function frameLocationLabel(frame: StackFrameSnapshot): string {

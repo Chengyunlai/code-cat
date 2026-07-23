@@ -16,10 +16,7 @@ export class CallStackTree
   }
 
   public getChildren(): StackFrameSnapshot[] {
-    const state = this.store.snapshot();
-    const pause =
-      state.pauses.find((candidate) => candidate.id === state.selectedPauseId) ??
-      state.pauses.at(-1);
+    const pause = this.store.selectedPause();
     return [...(pause?.frames ?? [])];
   }
 

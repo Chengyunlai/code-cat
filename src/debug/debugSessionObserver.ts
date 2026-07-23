@@ -33,20 +33,37 @@ const SENSITIVE_VARIABLE =
 export class DebugSessionObserver implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private readonly captureVersions = new Map<string, number>();
+  private readonly trackedSessions = new Set<string>();
 
   public constructor(private readonly store: SessionStore) {
     const factory: vscode.DebugAdapterTrackerFactory = {
-      createDebugAdapterTracker: (session) => ({
-        onDidSendMessage: (message: unknown) => this.observeAdapterMessage(session, message),
-      }),
+      createDebugAdapterTracker: (session) => {
+        this.trackedSessions.add(session.id);
+        if (!this.store.snapshot().debugSessionId) {
+          this.store.beginDebugSession(session.id);
+        }
+        return {
+          onDidSendMessage: (message: unknown) => this.observeAdapterMessage(session, message),
+        };
+      },
     };
     this.disposables.push(
       vscode.debug.registerDebugAdapterTrackerFactory("python", factory),
       vscode.debug.registerDebugAdapterTrackerFactory("debugpy", factory),
       vscode.debug.onDidTerminateDebugSession((session) => {
         this.captureVersions.delete(session.id);
+        this.trackedSessions.delete(session.id);
+        this.store.endDebugSession(session.id);
       }),
     );
+  }
+
+  public useSession(sessionId: string): boolean {
+    if (!this.trackedSessions.has(sessionId)) {
+      return false;
+    }
+    this.store.beginDebugSession(sessionId);
+    return true;
   }
 
   public dispose(): void {
@@ -56,7 +73,7 @@ export class DebugSessionObserver implements vscode.Disposable {
   }
 
   private observeAdapterMessage(session: vscode.DebugSession, message: unknown): void {
-    if (!isStoppedEvent(message)) {
+    if (this.store.snapshot().debugSessionId !== session.id || !isStoppedEvent(message)) {
       return;
     }
 
@@ -97,6 +114,7 @@ export class DebugSessionObserver implements vscode.Disposable {
 
     const pause: DebugPause = {
       id: randomUUID(),
+      sessionId: session.id,
       reason: typeof body.reason === "string" ? body.reason : "paused",
       description: typeof body.description === "string" ? body.description : undefined,
       threadId,

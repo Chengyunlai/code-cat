@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const actions: RuntimeMapActions = {
     locateRoute: (question) => locateRoute(store, tutor, question),
-    startGuidedDebug: (question) => startGuidedDebug(store, tutor, question),
+    startGuidedDebug: (question) => startGuidedDebug(store, tutor, observer, question),
     explainPause: () => explainCurrentPause(store, tutor),
     revealLocation: async (location, frameId) => {
       if (frameId !== undefined) {
@@ -52,7 +52,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand("codeCat.startGuidedDebug", async () => {
-      await startGuidedDebug(store, tutor, store.snapshot().route?.question);
+      await startGuidedDebug(store, tutor, observer, store.snapshot().route?.question);
     }),
     vscode.commands.registerCommand("codeCat.explainPause", async () => {
       await explainCurrentPause(store, tutor);
@@ -107,9 +107,7 @@ async function locateRoute(
 
 async function explainCurrentPause(store: SessionStore, tutor: AiTutor): Promise<void> {
   const state = store.snapshot();
-  const pause =
-    state.pauses.find((candidate) => candidate.id === state.selectedPauseId) ??
-    state.pauses.at(-1);
+  const pause = store.selectedPause();
   if (!pause) {
     void vscode.window.showInformationMessage(
       "Start a Python debug session and pause at a breakpoint before asking for an explanation.",
@@ -136,6 +134,7 @@ async function explainCurrentPause(store: SessionStore, tutor: AiTutor): Promise
 async function startGuidedDebug(
   store: SessionStore,
   tutor: AiTutor,
+  observer: DebugSessionObserver,
   suppliedQuestion?: string,
 ): Promise<void> {
   let question = suppliedQuestion?.trim();
@@ -151,7 +150,14 @@ async function startGuidedDebug(
   }
 
   await vscode.commands.executeCommand("workbench.view.extension.codeCat");
-  if (vscode.debug.activeDebugSession) {
+  const activeSession = vscode.debug.activeDebugSession;
+  if (activeSession) {
+    if (!observer.useSession(activeSession.id)) {
+      void vscode.window.showWarningMessage(
+        "This debugger started before Code Cat could observe it. Stop and restart the debug session once to capture reliable runtime evidence.",
+      );
+      return;
+    }
     void vscode.window.showInformationMessage(
       "Code Cat is now observing the active debug session. Pause or hit a breakpoint to capture the stack.",
     );
@@ -267,4 +273,3 @@ function isSourceLocation(value: unknown): value is SourceLocation {
     typeof candidate.column === "number"
   );
 }
-

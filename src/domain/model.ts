@@ -18,6 +18,7 @@ export interface StackFrameSnapshot {
 
 export interface DebugPause {
   readonly id: string;
+  readonly sessionId: string;
   readonly reason: string;
   readonly description?: string;
   readonly threadId: number;
@@ -45,10 +46,12 @@ export interface TutorMessage {
   readonly id: string;
   readonly kind: "route" | "pause" | "system" | "error";
   readonly markdown: string;
+  readonly pauseId?: string;
 }
 
 export interface SessionState {
   readonly route?: RoutePlan;
+  readonly debugSessionId?: string;
   readonly pauses: readonly DebugPause[];
   readonly selectedPauseId?: string;
   readonly selectedFrameId?: number;

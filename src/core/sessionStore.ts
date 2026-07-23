@@ -21,6 +21,9 @@ export class SessionStore implements vscode.Disposable {
     this.update({
       ...this.state,
       route,
+      pauses: [],
+      selectedPauseId: undefined,
+      selectedFrameId: undefined,
       tutorMessage: {
         id: randomUUID(),
         kind: "route",
@@ -30,20 +33,28 @@ export class SessionStore implements vscode.Disposable {
   }
 
   public recordPause(pause: DebugPause): void {
+    if (pause.sessionId !== this.state.debugSessionId) {
+      return;
+    }
     this.update({
       ...this.state,
       pauses: [...this.state.pauses, pause],
       selectedPauseId: pause.id,
       selectedFrameId: pause.frames[0]?.id,
+      tutorMessage: undefined,
       busyMessage: undefined,
     });
   }
 
   public selectPause(pauseId: string, frameId?: number): void {
+    const pause = this.state.pauses.find((candidate) => candidate.id === pauseId);
+    const tutorMessage =
+      this.state.tutorMessage?.pauseId === pauseId ? this.state.tutorMessage : undefined;
     this.update({
       ...this.state,
       selectedPauseId: pauseId,
-      selectedFrameId: frameId,
+      selectedFrameId: frameId ?? pause?.frames[0]?.id,
+      tutorMessage,
     });
   }
 
@@ -51,7 +62,38 @@ export class SessionStore implements vscode.Disposable {
     this.update({ ...this.state, selectedFrameId: frameId });
   }
 
+  public selectedPause(): DebugPause | undefined {
+    return (
+      this.state.pauses.find((pause) => pause.id === this.state.selectedPauseId) ??
+      this.state.pauses.at(-1)
+    );
+  }
+
+  public beginDebugSession(sessionId: string): void {
+    if (this.state.debugSessionId === sessionId) {
+      return;
+    }
+    this.update({
+      ...this.state,
+      debugSessionId: sessionId,
+      pauses: [],
+      selectedPauseId: undefined,
+      selectedFrameId: undefined,
+      tutorMessage: undefined,
+    });
+  }
+
+  public endDebugSession(sessionId: string): void {
+    if (this.state.debugSessionId !== sessionId) {
+      return;
+    }
+    this.update({ ...this.state, debugSessionId: undefined, busyMessage: undefined });
+  }
+
   public setTutorMessage(message: TutorMessage): void {
+    if (message.pauseId && message.pauseId !== this.state.selectedPauseId) {
+      return;
+    }
     this.update({ ...this.state, tutorMessage: message, busyMessage: undefined });
   }
 

@@ -78,7 +78,7 @@ export class AiTutor {
       ].join("\n"),
       token,
     );
-    return { id: randomUUID(), kind: "pause", markdown };
+    return { id: randomUUID(), kind: "pause", markdown, pauseId: pause.id };
   }
 
   private async request(prompt: string, token: vscode.CancellationToken): Promise<string> {
@@ -150,8 +150,10 @@ export class AiTutor {
       });
     }
 
-    if (nodes.length === 0) {
-      throw new Error("The proposed route did not resolve to files in this workspace.");
+    if (nodes.length < 3) {
+      throw new Error(
+        "The proposed route did not resolve to at least three Python stops in this workspace.",
+      );
     }
 
     return {
