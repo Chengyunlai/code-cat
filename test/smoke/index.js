@@ -37,6 +37,7 @@ async function run() {
     "codeCat.__seedTutorError",
     "codeCat.__seedStructuredPause",
     "codeCat.__seedPauseTutorError",
+    "codeCat.__seedRouteGuidance",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
@@ -129,19 +130,60 @@ async function run() {
   const originalBreakpoints = sourceBreakpointsAt(checkoutUri, breakpointLine).map(
     cloneSourceBreakpoint,
   );
-  const breakpointInitiallyPresent = originalBreakpoints.length > 0;
   let session;
   try {
+    await vscode.commands.executeCommand("codeCat.__seedRouteGuidance", codeCatLocation);
+    const routeCodeLenses = await vscode.commands.executeCommand(
+      "vscode.executeCodeLensProvider",
+      checkoutUri,
+      20,
+    );
+    const routeCodeLensTitles = routeCodeLenses.map((lens) => lens.command?.title);
+    assert.ok(
+      routeCodeLensTitles.some((title) => title?.includes("Code Cat · 第 1/1 步")),
+      "the route source line should expose its teaching context as CodeLens",
+    );
+    assert.ok(
+      routeCodeLensTitles.includes("在此暂停"),
+      "the route source line should let the learner add a precise managed breakpoint",
+    );
+    const routeHovers = await vscode.commands.executeCommand(
+      "vscode.executeHoverProvider",
+      checkoutUri,
+      new vscode.Position(breakpointLine, 0),
+    );
+    const routeHoverText = routeHovers
+      .flatMap((hover) => hover.contents)
+      .map((content) => typeof content === "string" ? content : content.value)
+      .join("\n");
+    assert.match(routeHoverText, /为什么在这里停/u);
+    assert.match(routeHoverText, /预留库存/u);
+
+    replaceSourceBreakpointsAt(checkoutUri, breakpointLine, []);
+    const userBreakpoint = new vscode.SourceBreakpoint(
+      new vscode.Location(checkoutUri, new vscode.Position(breakpointLine, 0)),
+      true,
+      "request.quantity > 0",
+    );
+    vscode.debug.addBreakpoints([userBreakpoint]);
+    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    assert.equal(
+      vscode.debug.breakpoints.includes(userBreakpoint),
+      true,
+      "Code Cat must never remove a user-owned breakpoint at the same source line",
+    );
+    replaceSourceBreakpointsAt(checkoutUri, breakpointLine, []);
+
     await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
     assert.equal(
       hasBreakpoint(checkoutUri, breakpointLine),
-      !breakpointInitiallyPresent,
+      true,
       "Code Cat should toggle the linked source breakpoint",
     );
     await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
     assert.equal(
       hasBreakpoint(checkoutUri, breakpointLine),
-      breakpointInitiallyPresent,
+      false,
       "Code Cat should toggle the linked source breakpoint back",
     );
     replaceSourceBreakpointsAt(checkoutUri, breakpointLine, []);
@@ -151,6 +193,21 @@ async function run() {
       true,
       "Code Cat should create the temporary smoke breakpoint",
     );
+    await vscode.commands.executeCommand("codeCat.__seedRouteGuidance", codeCatLocation);
+    assert.equal(
+      hasBreakpoint(checkoutUri, breakpointLine),
+      false,
+      "replacing the reading route must remove the previous route's managed breakpoints",
+    );
+    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    await vscode.commands.executeCommand("codeCat.clearSession");
+    assert.equal(
+      hasBreakpoint(checkoutUri, breakpointLine),
+      false,
+      "starting a new Code Cat conversation must remove managed breakpoints",
+    );
+    await vscode.commands.executeCommand("codeCat.__seedRouteGuidance", codeCatLocation);
+    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
 
     const started = waitForEvent(
       vscode.debug.onDidStartDebugSession,
@@ -199,6 +256,18 @@ async function run() {
       "Code Cat to publish its first debug snapshot",
     );
     assert.ok(firstCodeCatState.lastPauseFrameCount > 0, "Code Cat should capture DAP frames");
+    const pausedCodeLenses = await vscode.commands.executeCommand(
+      "vscode.executeCodeLensProvider",
+      checkoutUri,
+      20,
+    );
+    const pausedCodeLensTitles = pausedCodeLenses.map((lens) => lens.command?.title);
+    for (const title of ["解释此处", "继续运行", "进入函数", "单步跳过"]) {
+      assert.ok(
+        pausedCodeLensTitles.includes(title),
+        `the live source line should expose the ${title} operation`,
+      );
+    }
 
     const stepped = waitForEvent(
       vscode.debug.onDidChangeActiveStackItem,
@@ -226,6 +295,11 @@ async function run() {
         state.runtimeMap?.lastReceivedVersion === state.runtimeMap.stateVersion &&
         state.runtimeMap.scriptError === undefined,
       "Code Cat to mark the guided debug session as ended",
+    );
+    assert.equal(
+      hasBreakpoint(checkoutUri, breakpointLine),
+      false,
+      "ending guided debug must remove Code Cat's managed breakpoint",
     );
     session = undefined;
     console.log(
@@ -562,7 +636,7 @@ async function testRoutePreflight() {
                 title: "Checkout",
                 symbol: "checkout",
                 file: "order_service/checkout.py",
-                line: 1,
+                line: 22,
                 reason: "Entry point",
                 confidence: "high",
               },
@@ -577,6 +651,11 @@ async function testRoutePreflight() {
     );
     assert.equal(routeResult.kind, "route");
     assert.equal(routeResult.route.nodes.length, 1);
+    assert.equal(
+      routeResult.route.nodes[0].location.line,
+      23,
+      "a function route stop should resolve to its first executable statement",
+    );
   } finally {
     cancellation.dispose();
   }

@@ -302,6 +302,7 @@ export const runtimeMapStyles = String.raw`
     }
     .breakpoint-control:hover { color: var(--cc-ink); background: var(--cc-surface-hover); }
     .breakpoint-control.on { color: var(--cc-danger); }
+    .breakpoint-control.external { color: var(--cc-muted); }
     .stack-list, .variable-list { overflow: hidden; border: 1px solid var(--cc-border); border-radius: var(--cc-radius); }
     .stack-frame {
       display: grid;

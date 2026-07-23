@@ -733,9 +733,13 @@ export const runtimeMapScript = String.raw`
       open.addEventListener('click', () => vscode.postMessage({ type: 'selectRouteNode', nodeId: node.id }));
       const breakpoint = document.createElement('button');
       breakpoint.type = 'button';
-      breakpoint.className = 'breakpoint-control' + (node.breakpoint ? ' on' : '');
+      breakpoint.className = 'breakpoint-control' + (node.breakpoint ? ' on' : '') + (node.breakpointState === 'external' ? ' external' : '');
       breakpoint.textContent = '●';
-      breakpoint.title = node.breakpoint ? '移除联动断点' : '添加联动断点';
+      breakpoint.title = node.breakpointState === 'external'
+        ? '此处是用户断点；Code Cat 会保留它'
+        : node.breakpointState === 'managed'
+          ? '移除教学断点'
+          : '添加教学断点';
       breakpoint.setAttribute('aria-label', breakpoint.title);
       breakpoint.addEventListener('click', () => vscode.postMessage({ type: 'toggleBreakpoint', nodeId: node.id }));
       wrap.append(open, breakpoint);

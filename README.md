@@ -111,13 +111,37 @@ providers above.
 1. Open the Code Cat activity-bar view.
 2. Type a normal message to chat with Code Cat, or ask a project question such as `How does checkout validate inventory and charge the customer?`. Code Cat automatically chooses conversation or code-path mode.
 3. For a code-path question, wait for the proposed route.
-4. Toggle breakpoints on the proposed route nodes.
+4. Toggle a teaching breakpoint on a proposed route node. When possible, Code Cat refines a
+   function declaration to its first executable statement.
 5. Open the Python entry file or add a Python/debugpy configuration to `.vscode/launch.json`.
 6. Select **Start guided debug** and choose a configuration when prompted.
 7. When debugpy pauses, return to the Code Cat activity-bar view to inspect the runtime trace, call stack, and variables. VS Code may automatically switch to its Run and Debug view when the session starts.
 8. Select **Explain current pause**, **Continue**, **Step Into**, or **Step Over**.
 
 If the debug session was already running before Code Cat began observing it, stop it and start it again from Code Cat so the full runtime chain can be captured.
+
+### 5. Source-line teaching controls
+
+Once a reading route exists, its Python source lines show a restrained `Code Cat · step/title`
+annotation. Hover the annotation or source line to see nearby code, the route context, and why
+the stop matters. After a structured pause explanation is available, the hover also includes
+**what happened**, **why it matters**, and **what to inspect next**.
+
+CodeLens actions above the exact source line provide progressively richer controls:
+
+- Before a pause: **show context** and **pause here / remove teaching breakpoint**.
+- At the live pause: **explain here**, **continue**, **step into**, and **step over**.
+- If the line already has a user-created breakpoint, Code Cat labels it as preserved and never
+  removes or takes ownership of it.
+
+VS Code enables CodeLens by default. If the actions are hidden, enable **Editor: Code Lens** in
+Settings (`"editor.codeLens": true`). The inline annotation and hover remain available when
+CodeLens is disabled.
+
+Code Cat teaching breakpoints are temporary. They are removed automatically when the guided
+debug session ends, when a new reading route replaces the old route, when **Code Cat: Clear
+Session** starts a new conversation, or when the extension is disposed. Only breakpoints created
+by Code Cat are removed; manual breakpoints are preserved.
 
 ## Build and test from source
 

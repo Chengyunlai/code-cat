@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { normalizePath } from "../core/locations";
 import { SessionStore } from "../core/sessionStore";
-import { hasSourceBreakpoint } from "../debug/breakpoints";
+import { LinkedBreakpointState } from "../debug/breakpoints";
 import { RouteNode, SourceLocation, StackFrameSnapshot } from "../domain/model";
 import { createRuntimeMapHtml } from "./runtimeMapHtml";
 
@@ -12,6 +12,7 @@ export interface RuntimeMapActions {
   explainPause(question?: string): Promise<void>;
   revealLocation(location: SourceLocation, frameId?: number): Promise<void>;
   toggleBreakpoint(location: SourceLocation): void;
+  breakpointState(location: SourceLocation): LinkedBreakpointState;
   runDebugCommand(command: "continue" | "stepInto" | "stepOver"): Promise<void>;
   configureModelProvider(): Promise<void>;
   modelProviderStatus(): { readonly label: string; readonly detail?: string };
@@ -188,14 +189,18 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     const route = state.route
       ? {
           ...state.route,
-          nodes: state.route.nodes.map((node) => ({
-            ...node,
-            fileLabel: vscode.workspace.asRelativePath(node.location.path, false),
-            breakpoint: hasSourceBreakpoint(node.location),
-            executed: executedNodeIds.has(node.id),
-            active: activeNodeIds.has(node.id),
-            focused: node.id === focusedNodeId,
-          })),
+          nodes: state.route.nodes.map((node) => {
+            const breakpointState = this.actions.breakpointState(node.location);
+            return {
+              ...node,
+              fileLabel: vscode.workspace.asRelativePath(node.location.path, false),
+              breakpoint: breakpointState !== "none",
+              breakpointState,
+              executed: executedNodeIds.has(node.id),
+              active: activeNodeIds.has(node.id),
+              focused: node.id === focusedNodeId,
+            };
+          }),
         }
       : undefined;
     const pauses = state.pauses.map((pause) => ({

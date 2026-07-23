@@ -5,12 +5,16 @@ import { ModelProviderService } from "./ai/modelProviderService";
 import { revealLocation } from "./core/locations";
 import { SessionActionCoordinator } from "./core/sessionActionCoordinator";
 import { SessionStore } from "./core/sessionStore";
-import { toggleSourceBreakpoint } from "./debug/breakpoints";
+import { ManagedBreakpointService } from "./debug/breakpoints";
 import { DebugSessionObserver } from "./debug/debugSessionObserver";
-import { SourceLocation } from "./domain/model";
+import { RoutePlan, SourceLocation } from "./domain/model";
 import { PythonProjectIndex } from "./project/pythonProjectIndex";
 import { CallStackTree } from "./views/callStackTree";
 import { RuntimeMapActions, RuntimeMapView } from "./views/runtimeMapView";
+import {
+  PYTHON_SOURCE_SELECTOR,
+  SourceGuidanceController,
+} from "./views/sourceGuidance";
 
 export function activate(context: vscode.ExtensionContext): void {
   const store = new SessionStore();
@@ -20,13 +24,25 @@ export function activate(context: vscode.ExtensionContext): void {
   const observer = new DebugSessionObserver(store);
   const callStackTree = new CallStackTree(store);
   const actionCoordinator = new SessionActionCoordinator(store);
+  const breakpoints = new ManagedBreakpointService();
+  const sourceGuidance = new SourceGuidanceController(store, breakpoints);
+
+  const toggleBreakpoint = (location: SourceLocation): void => {
+    if (breakpoints.toggle(location) === "external") {
+      void vscode.window.showInformationMessage(
+        "此处已有你设置的断点。Code Cat 会保留它，不会替你移除。",
+      );
+    }
+  };
 
   const actions: RuntimeMapActions = {
     askQuestion: (question) =>
-      actionCoordinator.run("question", () => answerQuestion(store, tutor, question)),
+      actionCoordinator.run("question", () =>
+        answerQuestion(store, tutor, breakpoints, question),
+      ),
     startGuidedDebug: (question) =>
       actionCoordinator.run("debug", () =>
-        startGuidedDebug(store, tutor, observer, question),
+        startGuidedDebug(store, tutor, observer, breakpoints, question),
       ),
     explainPause: (question) =>
       actionCoordinator.run("pause", () => explainCurrentPause(store, tutor, question)),
@@ -36,7 +52,8 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       await revealLocation(location);
     },
-    toggleBreakpoint: (location) => toggleSourceBreakpoint(location),
+    toggleBreakpoint,
+    breakpointState: (location) => breakpoints.state(location),
     runDebugCommand: (command) =>
       actionCoordinator.run("control", () => runDebugCommand(store, command)),
     configureModelProvider: async () => {
@@ -51,7 +68,11 @@ export function activate(context: vscode.ExtensionContext): void {
     projectIndex,
     observer,
     callStackTree,
+    breakpoints,
+    sourceGuidance,
     runtimeMap,
+    vscode.languages.registerCodeLensProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
+    vscode.languages.registerHoverProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
     vscode.window.registerTreeDataProvider("codeCat.callStack", callStackTree),
     vscode.window.registerWebviewViewProvider("codeCat.runtimeMap", runtimeMap),
     vscode.commands.registerCommand("codeCat.askProject", async () => {
@@ -79,7 +100,9 @@ export function activate(context: vscode.ExtensionContext): void {
       await actions.explainPause();
     }),
     vscode.commands.registerCommand("codeCat.clearSession", () => {
-      if (!store.clear()) {
+      if (store.clear()) {
+        breakpoints.clear();
+      } else {
         void vscode.window.showInformationMessage(
           "Wait for the current Code Cat request to finish before clearing the session.",
         );
@@ -120,8 +143,19 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand("codeCat.toggleBreakpoint", (location: unknown) => {
       if (isSourceLocation(location)) {
-        toggleSourceBreakpoint(location);
+        toggleBreakpoint(location);
       }
+    }),
+    vscode.commands.registerCommand("codeCat.showRouteNodeContext", async (nodeId: unknown) => {
+      if (typeof nodeId !== "string") {
+        return;
+      }
+      const node = store.snapshot().route?.nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) {
+        return;
+      }
+      await revealLocation(node.location);
+      await vscode.commands.executeCommand("editor.action.showHover");
     }),
     vscode.commands.registerCommand("codeCat.continue", () => actions.runDebugCommand("continue")),
     vscode.commands.registerCommand("codeCat.stepInto", () => actions.runDebugCommand("stepInto")),
@@ -216,6 +250,28 @@ export function activate(context: vscode.ExtensionContext): void {
           text: "模型没有按结构返回暂停解释，请重试或更换模型。",
         });
       }),
+      vscode.commands.registerCommand(
+        "codeCat.__seedRouteGuidance",
+        (location: unknown) => {
+          if (!isSourceLocation(location)) {
+            return;
+          }
+          replaceReadingRoute(store, breakpoints, {
+            question: "库存预留发生在哪里？",
+            summary: "从结账入口观察库存预留调用。",
+            nodes: [
+              {
+                id: "source-guidance-smoke",
+                title: "预留库存",
+                symbol: "checkout",
+                location,
+                reason: "这里把请求中的商品和数量交给库存边界，是结账能否继续的关键证据。",
+                confidence: "high",
+              },
+            ],
+          });
+        },
+      ),
     );
   }
 }
@@ -225,6 +281,7 @@ export function deactivate(): void {}
 async function answerQuestion(
   store: SessionStore,
   tutor: AiTutor,
+  breakpoints: ManagedBreakpointService,
   question: string,
 ): Promise<void> {
   store.setBusy("正在理解你的问题…");
@@ -241,7 +298,7 @@ async function answerQuestion(
     if (result.kind === "chat") {
       store.addChatExchange(question, result.answer);
     } else {
-      store.setRoute(result.route);
+      replaceReadingRoute(store, breakpoints, result.route);
     }
     await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   } catch (error) {
@@ -252,6 +309,7 @@ async function answerQuestion(
 async function locateRoute(
   store: SessionStore,
   tutor: AiTutor,
+  breakpoints: ManagedBreakpointService,
   question: string,
 ): Promise<void> {
   store.setBusy("正在建立 Python 项目索引并定位代码链路…");
@@ -264,7 +322,7 @@ async function locateRoute(
       },
       async (_progress, token) => tutor.locateRoute(question, token),
     );
-    store.setRoute(route);
+    replaceReadingRoute(store, breakpoints, route);
     await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   } catch (error) {
     handleTutorError(store, error);
@@ -306,6 +364,7 @@ async function startGuidedDebug(
   store: SessionStore,
   tutor: AiTutor,
   observer: DebugSessionObserver,
+  breakpoints: ManagedBreakpointService,
   suppliedQuestion?: string,
 ): Promise<void> {
   let question = suppliedQuestion?.trim();
@@ -317,7 +376,7 @@ async function startGuidedDebug(
     });
   }
   if (question && store.snapshot().route?.question !== question) {
-    await locateRoute(store, tutor, question);
+    await locateRoute(store, tutor, breakpoints, question);
   }
 
   await launchGuidedDebugSession(observer);
@@ -533,4 +592,13 @@ function isSourceLocation(value: unknown): value is SourceLocation {
     typeof candidate.line === "number" &&
     typeof candidate.column === "number"
   );
+}
+
+function replaceReadingRoute(
+  store: SessionStore,
+  breakpoints: ManagedBreakpointService,
+  route: RoutePlan,
+): void {
+  breakpoints.clear();
+  store.setRoute(route);
 }

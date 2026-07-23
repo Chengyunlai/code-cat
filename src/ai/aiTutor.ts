@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { ChatMessage, DebugPause, RouteNode, RoutePlan, TutorMessage } from "../domain/model";
 import { PythonProjectIndex } from "../project/pythonProjectIndex";
+import { refinePythonBreakpointLine } from "../project/pythonBreakpointLines";
 import { ModelProviderService } from "./modelProviderService";
 
 interface ModelRouteNode {
@@ -253,7 +254,7 @@ export class AiTutor {
             : undefined,
         location: {
           path: absolutePath,
-          line: Math.min(document.lineCount, Math.max(1, Math.floor(candidate.line))),
+          line: refinePythonBreakpointLine(document, candidate.line),
           column: 1,
         },
         reason,
@@ -327,6 +328,7 @@ function routeInstructions(): readonly string[] {
   return [
     "Use only files and symbols present in the supplied project index for route nodes.",
     "Prefer 2-8 high-value stops: entry boundary, orchestration, domain decision, I/O, and result.",
+    "For each line, choose a precise executable statement such as a call, branch, state change, or return; do not use a def/class declaration, import, comment, or blank line unless unavoidable.",
     "Return one stop when the project is small.",
   ];
 }

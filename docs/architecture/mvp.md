@@ -51,6 +51,10 @@ The breakpoint is part of the lesson plan, not just a red dot:
 
 - Every route node owns a source location and breakpoint state.
 - The learner chooses which proposed stops become real breakpoints.
+- Model-proposed function declarations are refined to a nearby executable statement, and the
+  editor shows route context plus precise CodeLens controls at that line.
+- Code Cat tracks ownership of the breakpoints it creates. Guided-debug termination, route
+  replacement, and session clearing remove only those managed breakpoints.
 - A debug pause becomes a durable `DebugPause` snapshot.
 - The tutor sees the learning question, stop reason, stack, and bounded variables.
 - Continue, Step Into, and Step Over are available beside the explanation.

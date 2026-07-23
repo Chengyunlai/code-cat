@@ -78,6 +78,10 @@
         "title": "Code Cat: Toggle Linked Breakpoint"
       },
       {
+        "command": "codeCat.showRouteNodeContext",
+        "title": "Code Cat: Show Source Context"
+      },
+      {
         "command": "codeCat.continue",
         "title": "Code Cat: Continue"
       },
