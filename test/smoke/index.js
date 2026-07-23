@@ -158,6 +158,15 @@ async function run() {
       .join("\n");
     assert.match(routeHoverText, /为什么在这里停/u);
     assert.match(routeHoverText, /预留库存/u);
+    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    await vscode.commands.executeCommand("workbench.action.closeSidebar");
+    await waitForValue(
+      () => Promise.resolve(hasBreakpoint(checkoutUri, breakpointLine)),
+      (present) => present === false,
+      "closing the idle Code Cat view to clear managed breakpoints",
+    );
+    await vscode.commands.executeCommand("workbench.view.extension.codeCat");
+    await vscode.commands.executeCommand("codeCat.runtimeMap.focus");
 
     replaceSourceBreakpointsAt(checkoutUri, breakpointLine, []);
     const userBreakpoint = new vscode.SourceBreakpoint(
@@ -620,11 +629,17 @@ async function testRoutePreflight() {
       "order_service",
       "checkout.py",
     ).fsPath;
+    const multilinePath = vscode.Uri.joinPath(
+      folder.uri,
+      "order_service",
+      "multiline.py",
+    ).fsPath;
     const routeTutor = new AiTutor(
       {
         readinessIssue: async () => undefined,
         promptContext: async () => "Python files (1):\norder_service/checkout.py",
-        resolveFile: async () => checkoutPath,
+        resolveFile: async (candidate) =>
+          candidate.endsWith("multiline.py") ? multilinePath : checkoutPath,
       },
       {
         request: async () =>
@@ -640,6 +655,14 @@ async function testRoutePreflight() {
                 reason: "Entry point",
                 confidence: "high",
               },
+              {
+                title: "Transform value",
+                symbol: "transform",
+                file: "order_service/multiline.py",
+                line: 1,
+                reason: "Skip imports, decorators, and the docstring.",
+                confidence: "high",
+              },
             ],
           }),
       },
@@ -650,11 +673,16 @@ async function testRoutePreflight() {
       cancellation.token,
     );
     assert.equal(routeResult.kind, "route");
-    assert.equal(routeResult.route.nodes.length, 1);
+    assert.equal(routeResult.route.nodes.length, 2);
     assert.equal(
       routeResult.route.nodes[0].location.line,
       23,
       "a function route stop should resolve to its first executable statement",
+    );
+    assert.equal(
+      routeResult.route.nodes[1].location.line,
+      9,
+      "a noisy route line and multiline header should resolve through the named symbol to executable code",
     );
   } finally {
     cancellation.dispose();

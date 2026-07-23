@@ -139,9 +139,11 @@ Settings (`"editor.codeLens": true`). The inline annotation and hover remain ava
 CodeLens is disabled.
 
 Code Cat teaching breakpoints are temporary. They are removed automatically when the guided
-debug session ends, when a new reading route replaces the old route, when **Code Cat: Clear
-Session** starts a new conversation, or when the extension is disposed. Only breakpoints created
-by Code Cat are removed; manual breakpoints are preserved.
+debug session ends, when a new reading route replaces the old route, when the Code Cat view is
+closed outside an active debug session, when **Code Cat: New Conversation** starts a clean
+conversation, or when the extension is disposed. Only breakpoints created by Code Cat are
+removed; manual breakpoints are preserved. Normal follow-up chat inside the same conversation
+does not discard its teaching route.
 
 ## Build and test from source
 

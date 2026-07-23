@@ -21,10 +21,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const projectIndex = new PythonProjectIndex();
   const modelProvider = new ModelProviderService(context);
   const tutor = new AiTutor(projectIndex, modelProvider);
-  const observer = new DebugSessionObserver(store);
+  const breakpoints = new ManagedBreakpointService();
+  const observer = new DebugSessionObserver(store, () => breakpoints.clear());
   const callStackTree = new CallStackTree(store);
   const actionCoordinator = new SessionActionCoordinator(store);
-  const breakpoints = new ManagedBreakpointService();
   const sourceGuidance = new SourceGuidanceController(store, breakpoints);
 
   const toggleBreakpoint = (location: SourceLocation): void => {
@@ -54,6 +54,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     toggleBreakpoint,
     breakpointState: (location) => breakpoints.state(location),
+    releaseManagedBreakpoints: () => breakpoints.clear(),
     runDebugCommand: (command) =>
       actionCoordinator.run("control", () => runDebugCommand(store, command)),
     configureModelProvider: async () => {

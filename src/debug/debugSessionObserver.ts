@@ -33,7 +33,10 @@ export class DebugSessionObserver implements vscode.Disposable {
   private readonly trackedSessions = new Set<string>();
   private awaitingGuidedSession = false;
 
-  public constructor(private readonly store: SessionStore) {
+  public constructor(
+    private readonly store: SessionStore,
+    private readonly onGuidedSessionEnded?: (sessionId: string) => void,
+  ) {
     const factory: vscode.DebugAdapterTrackerFactory = {
       createDebugAdapterTracker: (session) => {
         this.trackedSessions.add(session.id);
@@ -50,9 +53,13 @@ export class DebugSessionObserver implements vscode.Disposable {
       vscode.debug.registerDebugAdapterTrackerFactory("python", factory),
       vscode.debug.registerDebugAdapterTrackerFactory("debugpy", factory),
       vscode.debug.onDidTerminateDebugSession((session) => {
+        const guidedSessionEnded = this.store.snapshot().debugSessionId === session.id;
         this.captureVersions.delete(session.id);
         this.trackedSessions.delete(session.id);
         this.store.endDebugSession(session.id);
+        if (guidedSessionEnded) {
+          this.onGuidedSessionEnded?.(session.id);
+        }
       }),
     );
   }

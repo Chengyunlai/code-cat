@@ -17,7 +17,6 @@ export class ManagedBreakpointService implements vscode.Disposable {
           }
         }
       }),
-      vscode.debug.onDidTerminateDebugSession(() => this.clear()),
     ];
   }
 

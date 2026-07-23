@@ -254,7 +254,11 @@ export class AiTutor {
             : undefined,
         location: {
           path: absolutePath,
-          line: refinePythonBreakpointLine(document, candidate.line),
+          line: refinePythonBreakpointLine(
+            document,
+            candidate.line,
+            typeof candidate.symbol === "string" ? candidate.symbol : undefined,
+          ),
           column: 1,
         },
         reason,

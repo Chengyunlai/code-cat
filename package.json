@@ -51,8 +51,8 @@
       },
       {
         "command": "codeCat.clearSession",
-        "title": "Code Cat: Clear Session",
-        "shortTitle": "Clear",
+        "title": "Code Cat: New Conversation",
+        "shortTitle": "New Conversation",
         "icon": "$(clear-all)"
       },
       {

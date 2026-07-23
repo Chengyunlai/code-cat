@@ -1,12 +1,26 @@
 import * as vscode from "vscode";
 import { normalizePath } from "../core/locations";
 import { SessionStore } from "../core/sessionStore";
-import { ManagedBreakpointService } from "../debug/breakpoints";
+import {
+  LinkedBreakpointState,
+  ManagedBreakpointService,
+} from "../debug/breakpoints";
 import { PauseExplanation, RouteNode, SourceLocation } from "../domain/model";
 
 export const PYTHON_SOURCE_SELECTOR: vscode.DocumentSelector = [
   { language: "python", scheme: "file" },
 ];
+
+interface SourceGuidanceContext {
+  readonly node: RouteNode;
+  readonly routeIndex: number;
+  readonly routeLength: number;
+  readonly lineIndex: number;
+  readonly line: vscode.TextLine;
+  readonly breakpointState: LinkedBreakpointState;
+  readonly live: boolean;
+  readonly explanation?: PauseExplanation;
+}
 
 export class SourceGuidanceController
   implements vscode.CodeLensProvider, vscode.HoverProvider, vscode.Disposable
@@ -39,8 +53,9 @@ export class SourceGuidanceController
   }
 
   public provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-    const nodes = this.nodesForDocument(document);
-    return nodes.flatMap((node) => this.codeLensesForNode(document, node));
+    return this.nodesForDocument(document).flatMap((node) =>
+      this.codeLensesForContext(this.contextFor(document, node)),
+    );
   }
 
   public provideHover(
@@ -53,10 +68,8 @@ export class SourceGuidanceController
     if (!node) {
       return undefined;
     }
-    return new vscode.Hover(
-      this.contextMarkdown(document, node),
-      document.lineAt(position.line).range,
-    );
+    const context = this.contextFor(document, node);
+    return new vscode.Hover(this.contextMarkdown(document, context), context.line.range);
   }
 
   public dispose(): void {
@@ -77,27 +90,22 @@ export class SourceGuidanceController
     for (const editor of vscode.window.visibleTextEditors) {
       const nodes = this.nodesForDocument(editor.document);
       const decorations = nodes.flatMap((node) => {
-        const index = Math.min(
-          editor.document.lineCount - 1,
-          Math.max(0, node.location.line - 1),
-        );
-        const line = editor.document.lineAt(index);
-        const route = this.store.snapshot().route;
-        const routeIndex = route?.nodes.findIndex((candidate) => candidate.id === node.id) ?? -1;
-        const breakpointState = this.breakpoints.state(node.location);
-        const prefix = this.isLiveNode(node)
+        const context = this.contextFor(editor.document, node);
+        const prefix = context.live
           ? "Code Cat · 当前暂停"
-          : breakpointState === "managed"
+          : context.breakpointState === "managed"
             ? "Code Cat · 教学断点"
-            : breakpointState === "external"
+            : context.breakpointState === "external"
               ? "Code Cat · 用户断点"
-              : `Code Cat · ${routeIndex + 1}/${route?.nodes.length ?? 1}`;
+              : `Code Cat · ${context.routeIndex + 1}/${context.routeLength}`;
         return [
           {
-            range: new vscode.Range(line.range.end, line.range.end),
-            hoverMessage: this.contextMarkdown(editor.document, node),
+            range: new vscode.Range(context.line.range.end, context.line.range.end),
+            hoverMessage: this.contextMarkdown(editor.document, context),
             renderOptions: {
-              after: { contentText: boundedInlineLabel(`${prefix} · ${node.title}`) },
+              after: {
+                contentText: boundedInlineLabel(`${prefix} · ${context.node.title}`),
+              },
             },
           },
         ];
@@ -120,25 +128,51 @@ export class SourceGuidanceController
     );
   }
 
-  private codeLensesForNode(
+  private contextFor(
     document: vscode.TextDocument,
     node: RouteNode,
-  ): vscode.CodeLens[] {
-    const route = this.store.snapshot().route;
-    const index = route?.nodes.findIndex((candidate) => candidate.id === node.id) ?? 0;
-    const line = Math.min(document.lineCount - 1, Math.max(0, node.location.line - 1));
-    const range = document.lineAt(line).range;
-    const state = this.breakpoints.state(node.location);
+  ): SourceGuidanceContext {
+    const state = this.store.snapshot();
+    const routeIndex = Math.max(
+      0,
+      state.route?.nodes.findIndex((candidate) => candidate.id === node.id) ?? 0,
+    );
+    const livePause = state.debugStatus === "paused" ? state.pauses.at(-1) : undefined;
+    const live = sameLocation(livePause?.frames[0]?.location, node.location);
+    const lineIndex = Math.min(
+      document.lineCount - 1,
+      Math.max(0, node.location.line - 1),
+    );
+    return {
+      node,
+      routeIndex,
+      routeLength: state.route?.nodes.length ?? 1,
+      lineIndex,
+      line: document.lineAt(lineIndex),
+      breakpointState: this.breakpoints.state(node.location),
+      live,
+      explanation:
+        live &&
+        state.tutorMessage?.kind === "pause" &&
+        state.tutorMessage.pauseId === livePause?.id
+          ? state.tutorMessage.explanation
+          : undefined,
+    };
+  }
+
+  private codeLensesForContext(context: SourceGuidanceContext): vscode.CodeLens[] {
+    const { node, routeIndex, routeLength, line, breakpointState, live } = context;
+    const range = line.range;
     const breakpointTitle =
-      state === "managed"
+      breakpointState === "managed"
         ? "移除教学断点"
-        : state === "external"
+        : breakpointState === "external"
           ? "已有用户断点（保留）"
           : "在此暂停";
     const lenses = [
       new vscode.CodeLens(range, {
         title: boundedInlineLabel(
-          `Code Cat · 第 ${index + 1}/${route?.nodes.length ?? 1} 步 · ${node.title}`,
+          `Code Cat · 第 ${routeIndex + 1}/${routeLength} 步 · ${node.title}`,
         ),
         command: "codeCat.showRouteNodeContext",
         arguments: [node.id],
@@ -146,14 +180,14 @@ export class SourceGuidanceController
       new vscode.CodeLens(range, {
         title: breakpointTitle,
         command:
-          state === "external"
+          breakpointState === "external"
             ? "codeCat.showRouteNodeContext"
             : "codeCat.toggleBreakpoint",
         arguments:
-          state === "external" ? [node.id] : [node.location],
+          breakpointState === "external" ? [node.id] : [node.location],
       }),
     ];
-    if (this.isLiveNode(node)) {
+    if (live) {
       lenses.push(
         commandLens(range, "解释此处", "codeCat.explainPause"),
         commandLens(range, "继续运行", "codeCat.continue"),
@@ -164,20 +198,20 @@ export class SourceGuidanceController
     return lenses;
   }
 
-  private contextMarkdown(document: vscode.TextDocument, node: RouteNode): vscode.MarkdownString {
-    const state = this.store.snapshot();
-    const route = state.route;
-    const index = route?.nodes.findIndex((candidate) => candidate.id === node.id) ?? 0;
+  private contextMarkdown(
+    document: vscode.TextDocument,
+    context: SourceGuidanceContext,
+  ): vscode.MarkdownString {
+    const { node, routeIndex, routeLength, lineIndex, explanation } = context;
     const markdown = new vscode.MarkdownString(undefined, true);
     markdown.appendMarkdown(
-      `### Code Cat · 第 ${index + 1}/${route?.nodes.length ?? 1} 步\n\n`,
+      `### Code Cat · 第 ${routeIndex + 1}/${routeLength} 步\n\n`,
     );
     markdown.appendMarkdown("**这里的上下文**\n\n");
     markdown.appendText(node.title);
     markdown.appendMarkdown("\n\n**为什么在这里停**\n\n");
     markdown.appendText(node.reason);
 
-    const explanation = this.pauseExplanation(node);
     if (explanation) {
       markdown.appendMarkdown("\n\n---\n\n**当前发生什么**\n\n");
       markdown.appendText(explanation.whatHappened);
@@ -187,31 +221,15 @@ export class SourceGuidanceController
       markdown.appendText(explanation.inspectNext);
     }
 
-    const line = Math.min(document.lineCount - 1, Math.max(0, node.location.line - 1));
-    const start = Math.max(0, line - 2);
-    const end = Math.min(document.lineCount - 1, line + 2);
-    const snippet = sourceSnippet(document, start, end, line);
+    const start = Math.max(0, lineIndex - 2);
+    const end = Math.min(document.lineCount - 1, lineIndex + 2);
+    const snippet = sourceSnippet(document, start, end, lineIndex);
     markdown.appendMarkdown("\n\n**附近代码**\n\n");
     markdown.appendCodeblock(snippet, "python");
     markdown.appendMarkdown("\n将鼠标移到提示上查看上下文；使用上方 CodeLens 精细控制断点和单步操作。");
     return markdown;
   }
 
-  private isLiveNode(node: RouteNode): boolean {
-    const state = this.store.snapshot();
-    const livePause = state.debugStatus === "paused" ? state.pauses.at(-1) : undefined;
-    return sameLocation(livePause?.frames[0]?.location, node.location);
-  }
-
-  private pauseExplanation(node: RouteNode): PauseExplanation | undefined {
-    const state = this.store.snapshot();
-    const livePause = state.debugStatus === "paused" ? state.pauses.at(-1) : undefined;
-    return state.tutorMessage?.kind === "pause" &&
-      state.tutorMessage.pauseId === livePause?.id &&
-      sameLocation(livePause.frames[0]?.location, node.location)
-      ? state.tutorMessage.explanation
-      : undefined;
-  }
 }
 
 function commandLens(

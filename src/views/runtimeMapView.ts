@@ -13,6 +13,7 @@ export interface RuntimeMapActions {
   revealLocation(location: SourceLocation, frameId?: number): Promise<void>;
   toggleBreakpoint(location: SourceLocation): void;
   breakpointState(location: SourceLocation): LinkedBreakpointState;
+  releaseManagedBreakpoints(): void;
   runDebugCommand(command: "continue" | "stepInto" | "stepOver"): Promise<void>;
   configureModelProvider(): Promise<void>;
   modelProviderStatus(): { readonly label: string; readonly detail?: string };
@@ -81,7 +82,13 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     view.webview.html = createRuntimeMapHtml(view.webview);
     this.disposables.push(
       view.webview.onDidReceiveMessage((message: unknown) => this.handleMessage(message)),
+      view.onDidChangeVisibility(() => {
+        if (!view.visible && !this.store.snapshot().debugSessionId) {
+          this.actions.releaseManagedBreakpoints();
+        }
+      }),
       view.onDidDispose(() => {
+        this.actions.releaseManagedBreakpoints();
         if (this.view === view) {
           this.view = undefined;
           this.lastSentFrameCount = 0;

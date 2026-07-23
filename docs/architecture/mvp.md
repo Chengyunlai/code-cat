@@ -54,7 +54,9 @@ The breakpoint is part of the lesson plan, not just a red dot:
 - Model-proposed function declarations are refined to a nearby executable statement, and the
   editor shows route context plus precise CodeLens controls at that line.
 - Code Cat tracks ownership of the breakpoints it creates. Guided-debug termination, route
-  replacement, and session clearing remove only those managed breakpoints.
+  replacement, explicit new-conversation actions, and idle-view closure remove only those
+  managed breakpoints. Debug termination cleanup is scoped to the session Code Cat is actually
+  observing, so an unrelated parallel debug session cannot clear the teaching route.
 - A debug pause becomes a durable `DebugPause` snapshot.
 - The tutor sees the learning question, stop reason, stack, and bounded variables.
 - Continue, Step Into, and Step Over are available beside the explanation.
