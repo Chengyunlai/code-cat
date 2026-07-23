@@ -143,7 +143,7 @@
     "watch": "tsc -w -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "smoke:vscode": "npm run compile && node scripts/run-vscode-smoke.mjs",
-    "package": "vsce package --no-dependencies --allow-missing-repository"
+    "package": "npm run compile && vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

@@ -58,7 +58,7 @@ async function preparePythonExtensions(sourceDir, targetDir) {
     const source = path.join(sourceDir, extension.name);
     const target = path.join(targetDir, extension.name);
     try {
-      await symlink(source, target, "dir");
+      await symlink(source, target, process.platform === "win32" ? "junction" : "dir");
     } catch (error) {
       if (error?.code !== "EEXIST") {
         throw error;
