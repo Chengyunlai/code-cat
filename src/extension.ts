@@ -174,7 +174,7 @@ async function startGuidedDebug(
     .filter((configuration) => configuration.type === "python" || configuration.type === "debugpy");
   const configuration = await chooseDebugConfiguration(configurations);
   if (configuration) {
-    const started = await vscode.debug.startDebugging(folder, configuration);
+    const started = await startObservedDebugSession(observer, folder, configuration);
     if (!started) {
       void vscode.window.showErrorMessage("VS Code could not start the selected Python debugger.");
     }
@@ -189,7 +189,7 @@ async function startGuidedDebug(
     await vscode.commands.executeCommand("workbench.action.debug.configure");
     return;
   }
-  const started = await vscode.debug.startDebugging(folder, {
+  const started = await startObservedDebugSession(observer, folder, {
     name: "Code Cat: Current Python File",
     type: "debugpy",
     request: "launch",
@@ -199,6 +199,24 @@ async function startGuidedDebug(
   });
   if (!started) {
     void vscode.window.showErrorMessage("VS Code could not start debugpy for the active Python file.");
+  }
+}
+
+async function startObservedDebugSession(
+  observer: DebugSessionObserver,
+  folder: vscode.WorkspaceFolder,
+  configuration: vscode.DebugConfiguration,
+): Promise<boolean> {
+  observer.armNextSession();
+  try {
+    const started = await vscode.debug.startDebugging(folder, configuration);
+    if (!started) {
+      observer.disarmNextSession();
+    }
+    return started;
+  } catch (error) {
+    observer.disarmNextSession();
+    throw error;
   }
 }
 

@@ -24,6 +24,7 @@ export class SessionStore implements vscode.Disposable {
       pauses: [],
       selectedPauseId: undefined,
       selectedFrameId: undefined,
+      busyMessage: undefined,
       tutorMessage: {
         id: randomUUID(),
         kind: "route",
@@ -55,6 +56,7 @@ export class SessionStore implements vscode.Disposable {
       selectedPauseId: pauseId,
       selectedFrameId: frameId ?? pause?.frames[0]?.id,
       tutorMessage,
+      busyMessage: undefined,
     });
   }
 
@@ -80,6 +82,7 @@ export class SessionStore implements vscode.Disposable {
       selectedPauseId: undefined,
       selectedFrameId: undefined,
       tutorMessage: undefined,
+      busyMessage: undefined,
     });
   }
 

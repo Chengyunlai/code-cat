@@ -34,12 +34,14 @@ export class DebugSessionObserver implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private readonly captureVersions = new Map<string, number>();
   private readonly trackedSessions = new Set<string>();
+  private awaitingGuidedSession = false;
 
   public constructor(private readonly store: SessionStore) {
     const factory: vscode.DebugAdapterTrackerFactory = {
       createDebugAdapterTracker: (session) => {
         this.trackedSessions.add(session.id);
-        if (!this.store.snapshot().debugSessionId) {
+        if (this.awaitingGuidedSession && !this.store.snapshot().debugSessionId) {
+          this.awaitingGuidedSession = false;
           this.store.beginDebugSession(session.id);
         }
         return {
@@ -64,6 +66,14 @@ export class DebugSessionObserver implements vscode.Disposable {
     }
     this.store.beginDebugSession(sessionId);
     return true;
+  }
+
+  public armNextSession(): void {
+    this.awaitingGuidedSession = true;
+  }
+
+  public disarmNextSession(): void {
+    this.awaitingGuidedSession = false;
   }
 
   public dispose(): void {
