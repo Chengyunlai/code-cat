@@ -113,12 +113,23 @@ providers above.
 3. For a code-path question, wait for the proposed route.
 4. Toggle a teaching breakpoint on a proposed route node. When possible, Code Cat refines a
    function declaration to its first executable statement.
-5. Open the Python entry file or add a Python/debugpy configuration to `.vscode/launch.json`.
-6. Select **Start guided debug** and choose a configuration when prompted.
+5. Select **Start guided debug**. Code Cat resolves what to run in this order:
+   - a Python/debugpy configuration already present in `.vscode/launch.json`;
+   - a console entry point declared under `[project.scripts]` in `pyproject.toml`;
+   - the currently open Python file as a final fallback.
+6. Choose an entry when Code Cat finds multiple launch configurations or project scripts.
 7. When debugpy pauses, return to the Code Cat activity-bar view to inspect the runtime trace, call stack, and variables. VS Code may automatically switch to its Run and Debug view when the session starts.
 8. Select **Explain current pause**, **Continue**, **Step Into**, or **Step Over**.
 
 If the debug session was already running before Code Cat began observing it, stop it and start it again from Code Cat so the full runtime chain can be captured.
+
+For installed Python applications, prefer the `[project.scripts]` route. An implementation file
+such as `src/echo/cli/main.py` may only define `main()` and do nothing when executed directly,
+while a declaration such as `echo-cli = "echo.cli.main:main"` is the application's real entry
+point. Code Cat detects and invokes that callable under debugpy using the interpreter selected by
+**Python: Select Interpreter**. Add a `.vscode/launch.json` configuration when the application
+requires command-line arguments, special environment variables, a framework-specific launcher,
+or another custom startup sequence; that configuration always takes priority.
 
 ### 5. Source-line teaching controls
 
@@ -181,7 +192,12 @@ npm run smoke:vscode
 
 Set `CODE_CAT_VSCODE_EXTENSIONS_DIR` only when the isolated target itself must move. Point it to a dedicated test directory, never to the normal user extensions directory; the runner populates it with only the allowed Python dependencies.
 
-`npm run smoke:vscode` launches an isolated Extension Host using the installed VS Code application and explicit Microsoft Python extension dependencies. It verifies activation, model-provider command registration, linked breakpoint creation and restoration, debugpy startup, real pauses, captured stack frames and variables, native call-stack data, Runtime Map rendering, and Step Over.
+`npm run smoke:vscode` launches isolated Extension Hosts using the installed VS Code application
+and explicit Microsoft Python extension dependencies. It verifies activation, model-provider
+command registration, linked breakpoint creation and restoration, debugpy startup, real pauses,
+captured stack frames and variables, native call-stack data, Runtime Map rendering, Step Over,
+and a `[project.scripts]` entry module that defines—but does not directly call—its `main()`
+function.
 
 The route is a hypothesis; the runtime trace is evidence. Code Cat deliberately displays both.
 

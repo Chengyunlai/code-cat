@@ -7,6 +7,11 @@ import { SessionActionCoordinator } from "./core/sessionActionCoordinator";
 import { SessionStore } from "./core/sessionStore";
 import { ManagedBreakpointService } from "./debug/breakpoints";
 import { DebugSessionObserver } from "./debug/debugSessionObserver";
+import {
+  discoverPythonProjectScripts,
+  projectScriptDebugConfiguration,
+  PythonProjectScript,
+} from "./debug/pythonLaunchTargets";
 import { RoutePlan, SourceLocation } from "./domain/model";
 import { PythonProjectIndex } from "./project/pythonProjectIndex";
 import { CallStackTree } from "./views/callStackTree";
@@ -42,7 +47,14 @@ export function activate(context: vscode.ExtensionContext): void {
       ),
     startGuidedDebug: (question) =>
       actionCoordinator.run("debug", () =>
-        startGuidedDebug(store, tutor, observer, breakpoints, question),
+        startGuidedDebug(
+          context.extensionUri,
+          store,
+          tutor,
+          observer,
+          breakpoints,
+          question,
+        ),
       ),
     explainPause: (question) =>
       actionCoordinator.run("pause", () => explainCurrentPause(store, tutor, question)),
@@ -55,6 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
     toggleBreakpoint,
     breakpointState: (location) => breakpoints.state(location),
     releaseManagedBreakpoints: () => breakpoints.clear(),
+    canReleaseManagedBreakpoints: () => !observer.isAwaitingGuidedSession(),
     runDebugCommand: (command) =>
       actionCoordinator.run("control", () => runDebugCommand(store, command)),
     configureModelProvider: async () => {
@@ -171,12 +184,14 @@ export function activate(context: vscode.ExtensionContext): void {
         pauseCount: store.snapshot().pauses.length,
         chatMessageCount: store.snapshot().chatMessages.length,
         lastPauseFrameCount: store.selectedPause()?.frames.length ?? 0,
+        lastPauseTopFramePath: store.selectedPause()?.frames[0]?.location?.path,
+        lastPauseTopFrameLine: store.selectedPause()?.frames[0]?.location?.line,
         lastPauseVariableCount: store.selectedPause()?.variables.length ?? 0,
         callStackFrameCount: callStackTree.getChildren().length,
         runtimeMap: runtimeMap.smokeDiagnostics(),
       })),
       vscode.commands.registerCommand("codeCat.__startSmokeDebug", () =>
-        launchGuidedDebugSession(observer),
+        launchGuidedDebugSession(context.extensionUri, observer),
       ),
       vscode.commands.registerCommand("codeCat.__showSmokeView", async () => {
         await vscode.commands.executeCommand("workbench.view.extension.codeCat");
@@ -362,6 +377,7 @@ async function explainCurrentPause(
 }
 
 async function startGuidedDebug(
+  extensionUri: vscode.Uri,
   store: SessionStore,
   tutor: AiTutor,
   observer: DebugSessionObserver,
@@ -380,10 +396,13 @@ async function startGuidedDebug(
     await locateRoute(store, tutor, breakpoints, question);
   }
 
-  await launchGuidedDebugSession(observer);
+  await launchGuidedDebugSession(extensionUri, observer);
 }
 
-async function launchGuidedDebugSession(observer: DebugSessionObserver): Promise<void> {
+async function launchGuidedDebugSession(
+  extensionUri: vscode.Uri,
+  observer: DebugSessionObserver,
+): Promise<void> {
   await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   const activeSession = vscode.debug.activeDebugSession;
   if (activeSession) {
@@ -407,11 +426,33 @@ async function launchGuidedDebugSession(observer: DebugSessionObserver): Promise
     .getConfiguration("launch", folder.uri)
     .get<readonly vscode.DebugConfiguration[]>("configurations", [])
     .filter((configuration) => configuration.type === "python" || configuration.type === "debugpy");
-  const configuration = await chooseDebugConfiguration(configurations);
-  if (configuration) {
+  if (configurations.length > 0) {
+    const configuration = await chooseDebugConfiguration(configurations);
+    if (!configuration) {
+      return;
+    }
     const started = await startObservedDebugSession(observer, folder, configuration);
     if (!started) {
       void vscode.window.showErrorMessage("VS Code could not start the selected Python debugger.");
+    }
+    return;
+  }
+
+  const projectScripts = await discoverPythonProjectScripts(folder);
+  if (projectScripts.length > 0) {
+    const projectScript = await chooseProjectScript(projectScripts);
+    if (!projectScript) {
+      return;
+    }
+    const started = await startObservedDebugSession(
+      observer,
+      folder,
+      projectScriptDebugConfiguration(folder, extensionUri, projectScript),
+    );
+    if (!started) {
+      void vscode.window.showErrorMessage(
+        `VS Code could not start the ${projectScript.name} project entry point.`,
+      );
     }
     return;
   }
@@ -488,6 +529,27 @@ async function chooseDebugConfiguration(
     { title: "Choose a Python debug configuration", ignoreFocusOut: true },
   );
   return selection?.configuration;
+}
+
+async function chooseProjectScript(
+  scripts: readonly PythonProjectScript[],
+): Promise<PythonProjectScript | undefined> {
+  if (scripts.length === 1) {
+    return scripts[0];
+  }
+  const selection = await vscode.window.showQuickPick(
+    scripts.map((script) => ({
+      label: script.name,
+      description: `${script.module}:${script.callable}`,
+      script,
+    })),
+    {
+      title: "Choose the Python project entry point to debug",
+      placeHolder: "Entry points declared in pyproject.toml [project.scripts]",
+      ignoreFocusOut: true,
+    },
+  );
+  return selection?.script;
 }
 
 async function runDebugCommand(

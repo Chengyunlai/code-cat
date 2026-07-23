@@ -25,17 +25,25 @@ const isolatedExtensions =
   process.env.CODE_CAT_VSCODE_EXTENSIONS_DIR ??
   path.join(root, ".vscode-test", "code-cat-extensions");
 const extensionsDir = await preparePythonExtensions(machineExtensions, isolatedExtensions);
-const launchArgs = [
-  path.join(root, "examples/python-order-service"),
-  `--extensions-dir=${extensionsDir}`,
+const suites = [
+  {
+    workspace: path.join(root, "examples/python-order-service"),
+    tests: path.join(root, "test/smoke/index.js"),
+  },
+  {
+    workspace: path.join(root, "examples/python-console-entrypoint"),
+    tests: path.join(root, "test/entrypoint/index.js"),
+  },
 ];
 
-await runTests({
-  vscodeExecutablePath,
-  extensionDevelopmentPath: root,
-  extensionTestsPath: path.join(root, "test/smoke/index.js"),
-  launchArgs,
-});
+for (const suite of suites) {
+  await runTests({
+    vscodeExecutablePath,
+    extensionDevelopmentPath: root,
+    extensionTestsPath: suite.tests,
+    launchArgs: [suite.workspace, `--extensions-dir=${extensionsDir}`],
+  });
+}
 
 async function preparePythonExtensions(sourceDir, targetDir) {
   await mkdir(targetDir, { recursive: true });

@@ -76,6 +76,10 @@ export class DebugSessionObserver implements vscode.Disposable {
     this.awaitingGuidedSession = true;
   }
 
+  public isAwaitingGuidedSession(): boolean {
+    return this.awaitingGuidedSession;
+  }
+
   public disarmNextSession(): void {
     this.awaitingGuidedSession = false;
   }

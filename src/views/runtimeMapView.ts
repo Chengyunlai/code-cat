@@ -14,6 +14,7 @@ export interface RuntimeMapActions {
   toggleBreakpoint(location: SourceLocation): void;
   breakpointState(location: SourceLocation): LinkedBreakpointState;
   releaseManagedBreakpoints(): void;
+  canReleaseManagedBreakpoints(): boolean;
   runDebugCommand(command: "continue" | "stepInto" | "stepOver"): Promise<void>;
   configureModelProvider(): Promise<void>;
   modelProviderStatus(): { readonly label: string; readonly detail?: string };
@@ -83,12 +84,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     this.disposables.push(
       view.webview.onDidReceiveMessage((message: unknown) => this.handleMessage(message)),
       view.onDidChangeVisibility(() => {
-        if (!view.visible && !this.store.snapshot().debugSessionId) {
-          this.actions.releaseManagedBreakpoints();
+        if (!view.visible) {
+          this.releaseManagedBreakpointsIfIdle();
         }
       }),
       view.onDidDispose(() => {
-        this.actions.releaseManagedBreakpoints();
+        this.releaseManagedBreakpointsIfIdle();
         if (this.view === view) {
           this.view = undefined;
           this.lastSentFrameCount = 0;
@@ -360,6 +361,17 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       state.debugStatus === "paused" &&
       this.store.selectedPause()?.id === state.pauses.at(-1)?.id
     );
+  }
+
+  private releaseManagedBreakpointsIfIdle(): void {
+    const state = this.store.snapshot();
+    if (
+      !state.debugSessionId &&
+      state.requestKind !== "debug" &&
+      this.actions.canReleaseManagedBreakpoints()
+    ) {
+      this.actions.releaseManagedBreakpoints();
+    }
   }
 
 }
