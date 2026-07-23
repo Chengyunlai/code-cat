@@ -63,7 +63,7 @@ export class SessionStore implements vscode.Disposable {
   public selectPause(pauseId: string, frameId?: number): void {
     const pause = this.state.pauses.find((candidate) => candidate.id === pauseId);
     const tutorMessage =
-      this.state.tutorMessage?.kind === "pause" &&
+      isPauseTutorMessage(this.state.tutorMessage) &&
       this.state.tutorMessage.pauseId === pauseId
         ? this.state.tutorMessage
         : undefined;
@@ -130,7 +130,7 @@ export class SessionStore implements vscode.Disposable {
   }
 
   public setTutorMessage(message: TutorMessage): void {
-    if (message.kind === "pause" && message.pauseId !== this.state.selectedPauseId) {
+    if (isPauseTutorMessage(message) && message.pauseId !== this.state.selectedPauseId) {
       this.update({ ...this.state, busyMessage: undefined });
       return;
     }
@@ -140,7 +140,7 @@ export class SessionStore implements vscode.Disposable {
       contentMode:
         message.kind === "route"
           ? "route"
-          : message.kind === "pause"
+          : isPauseTutorMessage(message)
             ? "debug"
             : "message",
       busyMessage: undefined,
@@ -192,6 +192,12 @@ export class SessionStore implements vscode.Disposable {
     this.state = next;
     this.changeEmitter.fire(next);
   }
+}
+
+function isPauseTutorMessage(
+  message: TutorMessage | undefined,
+): message is Extract<TutorMessage, { readonly kind: "pause" | "pause-error" }> {
+  return message?.kind === "pause" || message?.kind === "pause-error";
 }
 
 function appendChatExchange(

@@ -204,6 +204,18 @@ export function activate(context: vscode.ExtensionContext): void {
           },
         });
       }),
+      vscode.commands.registerCommand("codeCat.__seedPauseTutorError", () => {
+        const pause = store.selectedPause();
+        if (!pause) {
+          return;
+        }
+        store.setTutorMessage({
+          id: randomUUID(),
+          kind: "pause-error",
+          pauseId: pause.id,
+          text: "模型没有按结构返回暂停解释，请重试或更换模型。",
+        });
+      }),
     );
   }
 }
@@ -286,7 +298,7 @@ async function explainCurrentPause(
     );
     store.setTutorMessage(message);
   } catch (error) {
-    handleTutorError(store, error);
+    handlePauseTutorError(store, pause.id, error);
   }
 }
 
@@ -467,6 +479,25 @@ function handleTutorError(store: SessionStore, error: unknown): void {
     return;
   }
   store.setTutorMessage({ id: randomUUID(), kind: "error", text: message });
+  void vscode.commands.executeCommand("workbench.view.extension.codeCat");
+}
+
+function handlePauseTutorError(
+  store: SessionStore,
+  pauseId: string,
+  error: unknown,
+): void {
+  if (error instanceof vscode.CancellationError) {
+    store.setBusy(undefined);
+    return;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  store.setTutorMessage({
+    id: randomUUID(),
+    kind: "pause-error",
+    pauseId,
+    text: message,
+  });
   void vscode.commands.executeCommand("workbench.view.extension.codeCat");
 }
 

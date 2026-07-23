@@ -166,6 +166,7 @@ export class AiTutor {
         PAUSE_EXPLANATION_SCHEMA,
         "Each field must contain 1-3 concise sentences in the learner's language.",
         "Use whatHappened for the current execution, whyItMatters for its role in the code path, and inspectNext for one concrete next observation.",
+        "The current location and variable snapshot belong to the first stack frame. Treat later frames only as callers in the path.",
         "Do not claim facts that are not supported by the runtime snapshot.",
         "Do not include Markdown headings or fenced code blocks.",
         "Return JSON only, without Markdown fences.",

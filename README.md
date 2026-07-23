@@ -167,14 +167,15 @@ model response:
 - A planned route is limited to validated files and 1–8 bounded nodes; titles, summaries, and
   reasons are length-limited before entering session state.
 - A pause explanation must decode into exactly three fields: **what happened**, **why it
-  matters**, and **what to inspect next**. Missing or malformed fields are rejected instead of
-  rendering raw model output.
+  matters**, and **what to inspect next**. Missing or malformed fields are never rendered as raw
+  model output; the paused source, fallback explanation, stack, variables, and debug actions stay
+  visible with an inline retry message.
 - Debug variables are normalized once at capture time: debugger grouping rows are removed,
   duplicate names are collapsed, credential-like names are redacted, line breaks are folded,
   and displayed values are bounded.
-- The paused overview follows the reading order **source location → explanation → runtime
-  evidence → next debug action**. Full call-stack and variable tabs remain available for
-  deeper inspection.
+- The paused overview follows the reading order **top-frame source location → explanation →
+  top-frame runtime evidence → next debug action**. Full call-stack navigation remains in its
+  dedicated tab so selecting an upstream caller cannot relabel top-frame evidence.
 - Conversational Markdown is rendered into a small safe subset of DOM elements; model text is
   never inserted as executable HTML.
 

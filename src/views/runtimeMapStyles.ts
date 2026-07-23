@@ -158,6 +158,7 @@ export const runtimeMapStyles = String.raw`
     .lesson-copy { margin: 14px 0; max-width: 70ch; color: var(--cc-ink); font-size: 13px; white-space: pre-wrap; text-wrap: pretty; }
     .notice { padding: 10px; color: var(--cc-muted); background: var(--cc-surface); border-radius: var(--cc-radius); }
     .notice.error { color: var(--cc-danger); }
+    .pause-explanation-error { margin-top: 14px; }
     .evidence-copy { margin: 0; color: var(--cc-muted); text-wrap: pretty; }
     .evidence { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--cc-border); }
     .evidence-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }

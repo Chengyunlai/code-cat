@@ -26,16 +26,20 @@ interface WebviewMessage {
   readonly frameId?: unknown;
   readonly command?: unknown;
   readonly version?: unknown;
-  readonly chatMessageCount?: unknown;
-  readonly chatRoleLabelCount?: unknown;
-  readonly richTextElementCount?: unknown;
-  readonly pauseExplanationSectionCount?: unknown;
-  readonly pauseRichTextElementCount?: unknown;
-  readonly runtimeEvidenceGroupCount?: unknown;
-  readonly variablePreviewCount?: unknown;
-  readonly variablePreviewMaxLength?: unknown;
-  readonly contentMode?: unknown;
-  readonly tutorMessageRendered?: unknown;
+  readonly diagnostics?: unknown;
+}
+
+interface RenderedDiagnostics {
+  readonly chatMessageCount: number;
+  readonly chatRoleLabelCount: number;
+  readonly richTextElementCount: number;
+  readonly pauseExplanationSectionCount: number;
+  readonly pauseRichTextElementCount: number;
+  readonly runtimeEvidenceGroupCount: number;
+  readonly variablePreviewCount: number;
+  readonly variablePreviewMaxLength: number;
+  readonly contentMode: string | undefined;
+  readonly tutorMessageRendered: boolean;
 }
 
 export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -47,16 +51,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
   private renderedStateCount = 0;
   private lastReceivedVersion: number | undefined;
   private scriptError: string | undefined;
-  private renderedChatMessageCount = 0;
-  private renderedChatRoleLabelCount = 0;
-  private renderedRichTextElementCount = 0;
-  private renderedPauseExplanationSectionCount = 0;
-  private renderedPauseRichTextElementCount = 0;
-  private renderedRuntimeEvidenceGroupCount = 0;
-  private renderedVariablePreviewCount = 0;
-  private renderedVariablePreviewMaxLength = 0;
-  private renderedContentMode: string | undefined;
-  private tutorMessageRendered = false;
+  private renderedDiagnostics = emptyRenderedDiagnostics();
   private readonly disposables: vscode.Disposable[] = [];
 
   public constructor(
@@ -90,16 +85,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           this.view = undefined;
           this.lastSentFrameCount = 0;
           this.lastAcknowledgedFrameCount = 0;
-          this.renderedChatMessageCount = 0;
-          this.renderedChatRoleLabelCount = 0;
-          this.renderedRichTextElementCount = 0;
-          this.renderedPauseExplanationSectionCount = 0;
-          this.renderedPauseRichTextElementCount = 0;
-          this.renderedRuntimeEvidenceGroupCount = 0;
-          this.renderedVariablePreviewCount = 0;
-          this.renderedVariablePreviewMaxLength = 0;
-          this.renderedContentMode = undefined;
-          this.tutorMessageRendered = false;
+          this.renderedDiagnostics = emptyRenderedDiagnostics();
         }
       }),
     );
@@ -143,16 +129,20 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedStateCount: this.renderedStateCount,
       lastReceivedVersion: this.lastReceivedVersion,
       scriptError: this.scriptError,
-      renderedChatMessageCount: this.renderedChatMessageCount,
-      renderedChatRoleLabelCount: this.renderedChatRoleLabelCount,
-      renderedRichTextElementCount: this.renderedRichTextElementCount,
-      renderedPauseExplanationSectionCount: this.renderedPauseExplanationSectionCount,
-      renderedPauseRichTextElementCount: this.renderedPauseRichTextElementCount,
-      renderedRuntimeEvidenceGroupCount: this.renderedRuntimeEvidenceGroupCount,
-      renderedVariablePreviewCount: this.renderedVariablePreviewCount,
-      renderedVariablePreviewMaxLength: this.renderedVariablePreviewMaxLength,
-      renderedContentMode: this.renderedContentMode,
-      tutorMessageRendered: this.tutorMessageRendered,
+      renderedChatMessageCount: this.renderedDiagnostics.chatMessageCount,
+      renderedChatRoleLabelCount: this.renderedDiagnostics.chatRoleLabelCount,
+      renderedRichTextElementCount: this.renderedDiagnostics.richTextElementCount,
+      renderedPauseExplanationSectionCount:
+        this.renderedDiagnostics.pauseExplanationSectionCount,
+      renderedPauseRichTextElementCount:
+        this.renderedDiagnostics.pauseRichTextElementCount,
+      renderedRuntimeEvidenceGroupCount:
+        this.renderedDiagnostics.runtimeEvidenceGroupCount,
+      renderedVariablePreviewCount: this.renderedDiagnostics.variablePreviewCount,
+      renderedVariablePreviewMaxLength:
+        this.renderedDiagnostics.variablePreviewMaxLength,
+      renderedContentMode: this.renderedDiagnostics.contentMode,
+      tutorMessageRendered: this.renderedDiagnostics.tutorMessageRendered,
     };
   }
 
@@ -222,6 +212,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     const frames = (currentPause?.frames ?? []).map((frame, index) => ({
       ...frame,
       index,
+      displayName: displayFrameName(frame.name),
       fileLabel: frameLocationLabel(frame),
       selected: frame.id === state.selectedFrameId,
     }));
@@ -268,33 +259,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           typeof value.version === "number" ? value.version : undefined;
         if (this.lastReceivedVersion === this.stateVersion) {
           this.lastAcknowledgedFrameCount = this.lastSentFrameCount;
-          this.renderedChatMessageCount =
-            typeof value.chatMessageCount === "number" ? value.chatMessageCount : 0;
-          this.renderedChatRoleLabelCount =
-            typeof value.chatRoleLabelCount === "number" ? value.chatRoleLabelCount : 0;
-          this.renderedRichTextElementCount =
-            typeof value.richTextElementCount === "number" ? value.richTextElementCount : 0;
-          this.renderedPauseExplanationSectionCount =
-            typeof value.pauseExplanationSectionCount === "number"
-              ? value.pauseExplanationSectionCount
-              : 0;
-          this.renderedPauseRichTextElementCount =
-            typeof value.pauseRichTextElementCount === "number"
-              ? value.pauseRichTextElementCount
-              : 0;
-          this.renderedRuntimeEvidenceGroupCount =
-            typeof value.runtimeEvidenceGroupCount === "number"
-              ? value.runtimeEvidenceGroupCount
-              : 0;
-          this.renderedVariablePreviewCount =
-            typeof value.variablePreviewCount === "number" ? value.variablePreviewCount : 0;
-          this.renderedVariablePreviewMaxLength =
-            typeof value.variablePreviewMaxLength === "number"
-              ? value.variablePreviewMaxLength
-              : 0;
-          this.renderedContentMode =
-            typeof value.contentMode === "string" ? value.contentMode : undefined;
-          this.tutorMessageRendered = value.tutorMessageRendered === true;
+          this.renderedDiagnostics = parseRenderedDiagnostics(value.diagnostics);
         }
         return;
       case "scriptError":
@@ -395,6 +360,47 @@ function frameLocationLabel(frame: StackFrameSnapshot): string {
 
 function displayFrameName(name: string): string {
   return name === "<module>" ? "模块入口" : name;
+}
+
+function emptyRenderedDiagnostics(): RenderedDiagnostics {
+  return {
+    chatMessageCount: 0,
+    chatRoleLabelCount: 0,
+    richTextElementCount: 0,
+    pauseExplanationSectionCount: 0,
+    pauseRichTextElementCount: 0,
+    runtimeEvidenceGroupCount: 0,
+    variablePreviewCount: 0,
+    variablePreviewMaxLength: 0,
+    contentMode: undefined,
+    tutorMessageRendered: false,
+  };
+}
+
+function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
+  if (value === null || typeof value !== "object") {
+    return emptyRenderedDiagnostics();
+  }
+  const diagnostics = value as Partial<Record<keyof RenderedDiagnostics, unknown>>;
+  return {
+    chatMessageCount: numberDiagnostic(diagnostics.chatMessageCount),
+    chatRoleLabelCount: numberDiagnostic(diagnostics.chatRoleLabelCount),
+    richTextElementCount: numberDiagnostic(diagnostics.richTextElementCount),
+    pauseExplanationSectionCount: numberDiagnostic(
+      diagnostics.pauseExplanationSectionCount,
+    ),
+    pauseRichTextElementCount: numberDiagnostic(diagnostics.pauseRichTextElementCount),
+    runtimeEvidenceGroupCount: numberDiagnostic(diagnostics.runtimeEvidenceGroupCount),
+    variablePreviewCount: numberDiagnostic(diagnostics.variablePreviewCount),
+    variablePreviewMaxLength: numberDiagnostic(diagnostics.variablePreviewMaxLength),
+    contentMode:
+      typeof diagnostics.contentMode === "string" ? diagnostics.contentMode : undefined,
+    tutorMessageRendered: diagnostics.tutorMessageRendered === true,
+  };
+}
+
+function numberDiagnostic(value: unknown): number {
+  return typeof value === "number" ? value : 0;
 }
 
 function closestRouteNodeId(

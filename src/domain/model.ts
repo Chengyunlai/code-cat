@@ -62,6 +62,12 @@ export type TutorMessage =
     }
   | {
       readonly id: string;
+      readonly kind: "pause-error";
+      readonly pauseId: string;
+      readonly text: string;
+    }
+  | {
+      readonly id: string;
       readonly kind: "system" | "error";
       readonly text: string;
     };

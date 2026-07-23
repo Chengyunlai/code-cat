@@ -78,23 +78,25 @@ export const runtimeMapScript = String.raw`
         vscode.postMessage({
           type: 'renderedState',
           version: event.data.version,
-          chatMessageCount: (currentState.chatMessages || []).length,
-          chatRoleLabelCount: elements.content.querySelectorAll('.chat-role').length,
-          richTextElementCount: elements.content.querySelectorAll('.chat-body code, .chat-body strong').length,
-          pauseExplanationSectionCount: elements.content.querySelectorAll('.explanation-section').length,
-          pauseRichTextElementCount: elements.content.querySelectorAll('.explanation-section code, .explanation-section strong').length,
-          runtimeEvidenceGroupCount: elements.content.querySelectorAll('.runtime-evidence-group').length,
-          variablePreviewCount: elements.content.querySelectorAll('.variable-preview-row').length,
-          variablePreviewMaxLength: Math.max(
-            0,
-            ...Array.from(elements.content.querySelectorAll('.variable-preview-value'))
-              .map((element) => element.textContent.length),
-          ),
-          contentMode: currentState.contentMode,
-          tutorMessageRendered: Boolean(
-            currentState.tutorMessage &&
-            elements.content.textContent.includes(tutorMessageText(currentState.tutorMessage))
-          ),
+          diagnostics: {
+            chatMessageCount: (currentState.chatMessages || []).length,
+            chatRoleLabelCount: elements.content.querySelectorAll('.chat-role').length,
+            richTextElementCount: elements.content.querySelectorAll('.chat-body code, .chat-body strong').length,
+            pauseExplanationSectionCount: elements.content.querySelectorAll('.explanation-section').length,
+            pauseRichTextElementCount: elements.content.querySelectorAll('.explanation-section code, .explanation-section strong').length,
+            runtimeEvidenceGroupCount: elements.content.querySelectorAll('.runtime-evidence-group').length,
+            variablePreviewCount: elements.content.querySelectorAll('.variable-preview-row').length,
+            variablePreviewMaxLength: Math.max(
+              0,
+              ...Array.from(elements.content.querySelectorAll('.variable-preview-value'))
+                .map((element) => element.textContent.length),
+            ),
+            contentMode: currentState.contentMode,
+            tutorMessageRendered: Boolean(
+              currentState.tutorMessage &&
+              elements.content.textContent.includes(tutorMessageText(currentState.tutorMessage))
+            ),
+          },
         });
       }
     });
@@ -217,6 +219,9 @@ export const runtimeMapScript = String.raw`
         elements.statusLabel.textContent = state.tutorMessage.kind === 'error'
           ? '请求未完成'
           : '需要你的操作';
+      } else if (state.tutorMessage?.kind === 'pause-error') {
+        elements.statusDot.classList.add('primary');
+        elements.statusLabel.textContent = '已保留运行时证据 · 模型解释可重试';
       } else if (state.debugStatus === 'ended') {
         elements.statusDot.classList.add('success');
         elements.statusLabel.textContent = pauses.length
@@ -494,7 +499,7 @@ export const runtimeMapScript = String.raw`
       const route = state.route;
       const frames = state.frames || [];
       const variables = state.variables || [];
-      const frame = frames.find((candidate) => candidate.selected) || frames[0];
+      const frame = frames[0];
       const livePause = selectedPauseIsLive(state);
       const node = currentRouteNode(route, frame);
       const nodeIndex = route && node ? route.nodes.findIndex((candidate) => candidate.id === node.id) : -1;
@@ -526,7 +531,14 @@ export const runtimeMapScript = String.raw`
         explanationSection('为什么重要', explanation.whyItMatters),
         explanationSection('下一步看什么', explanation.inspectNext),
       );
-      reading.append(heading, source, sections, runtimeEvidence(frames, variables));
+      reading.append(heading, source, sections);
+      if (state.tutorMessage?.kind === 'pause-error') {
+        const explanationError = document.createElement('div');
+        explanationError.className = 'notice pause-explanation-error';
+        explanationError.textContent = '模型解释未按约定结构返回。当前仍保留真实运行时证据；你可以稍后重新解释。详情：' + state.tutorMessage.text;
+        reading.appendChild(explanationError);
+      }
+      reading.appendChild(runtimeEvidence(frames, variables));
       appendDebugActions(reading, state);
       const tags = document.createElement('div');
       tags.className = 'tags';
@@ -568,7 +580,7 @@ export const runtimeMapScript = String.raw`
     function runtimeEvidence(frames, variables) {
       const evidence = document.createElement('section');
       evidence.className = 'runtime-evidence';
-      const heading = sectionHeading('运行时证据', '来自本次 debugpy 暂停，用来验证代码路径');
+      const heading = sectionHeading('运行时证据', '来自本次暂停的顶层栈帧，用来验证代码路径');
       const grid = document.createElement('div');
       grid.className = 'runtime-evidence-grid';
       grid.append(runtimeStackEvidence(frames), runtimeVariableEvidence(variables));
@@ -589,7 +601,7 @@ export const runtimeMapScript = String.raw`
         order.textContent = '#' + index;
         const name = document.createElement('span');
         name.className = 'stack-preview-name';
-        name.textContent = displayFrameName(frame.name);
+        name.textContent = frame.displayName;
         const file = document.createElement('span');
         file.className = 'stack-preview-file';
         file.textContent = frame.fileLabel;
@@ -603,7 +615,7 @@ export const runtimeMapScript = String.raw`
     }
 
     function runtimeVariableEvidence(variables) {
-      const group = evidenceGroup('关键变量', variables.length ? '查看全部变量' : '暂无变量', () => switchTab('variables'));
+      const group = evidenceGroup('顶层栈帧变量', variables.length ? '查看全部变量' : '暂无变量', () => switchTab('variables'));
       const list = document.createElement('div');
       list.className = 'variable-preview-list';
       variables.slice(0, 4).forEach((variable) => {
@@ -647,10 +659,6 @@ export const runtimeMapScript = String.raw`
     function compactVariableValue(value) {
       const text = String(value || '');
       return text.length <= 120 ? text : text.slice(0, 119) + '…';
-    }
-
-    function displayFrameName(name) {
-      return name === '<module>' ? '模块入口' : name;
     }
 
     function appendDebugActions(root, state) {
@@ -755,7 +763,7 @@ export const runtimeMapScript = String.raw`
         copy.className = 'frame-copy';
         const name = document.createElement('span');
         name.className = 'frame-name';
-        name.textContent = displayFrameName(frame.name);
+        name.textContent = frame.displayName;
         const file = document.createElement('span');
         file.className = 'frame-file';
         file.textContent = frame.fileLabel;
@@ -850,6 +858,7 @@ export const runtimeMapScript = String.raw`
           message.explanation.inspectNext,
         ].join(' ');
       }
+      if (message.kind === 'pause-error') return message.text;
       return message.text || '';
     }
 

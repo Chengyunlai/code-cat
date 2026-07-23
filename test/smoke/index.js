@@ -36,6 +36,7 @@ async function run() {
     "codeCat.__seedChat",
     "codeCat.__seedTutorError",
     "codeCat.__seedStructuredPause",
+    "codeCat.__seedPauseTutorError",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
@@ -97,6 +98,17 @@ async function run() {
   assert.equal(structuredPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 2);
   assert.equal(structuredPauseState.runtimeMap.renderedVariablePreviewCount, 3);
   assert.ok(structuredPauseState.runtimeMap.renderedVariablePreviewMaxLength <= 120);
+  await vscode.commands.executeCommand("codeCat.__seedPauseTutorError");
+  const preservedPauseState = await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) =>
+      state?.runtimeMap?.renderedContentMode === "debug" &&
+      state.runtimeMap.tutorMessageRendered === true &&
+      state.runtimeMap.lastReceivedVersion === state.runtimeMap.stateVersion,
+    "the Runtime Map to preserve runtime evidence after a structured explanation error",
+  );
+  assert.equal(preservedPauseState.runtimeMap.renderedPauseExplanationSectionCount, 3);
+  assert.equal(preservedPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 2);
   await vscode.commands.executeCommand("codeCat.clearSession");
 
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -328,6 +340,17 @@ function testConversationState() {
       store.snapshot().contentMode,
       "debug",
       "a pause explanation must leave chat mode so the explanation is visible",
+    );
+    store.setTutorMessage({
+      id: "pause-explanation-error",
+      kind: "pause-error",
+      pauseId: "pause-1",
+      text: "模型解释结构无效。",
+    });
+    assert.equal(
+      store.snapshot().contentMode,
+      "debug",
+      "a pause explanation error must preserve the runtime reading view",
     );
 
     store.setRoute({
