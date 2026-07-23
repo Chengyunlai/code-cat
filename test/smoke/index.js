@@ -47,7 +47,10 @@ async function run() {
     line: breakpointLine + 1,
     column: 1,
   };
-  const breakpointInitiallyPresent = hasBreakpoint(checkoutUri, breakpointLine);
+  const originalBreakpoints = sourceBreakpointsAt(checkoutUri, breakpointLine).map(
+    cloneSourceBreakpoint,
+  );
+  const breakpointInitiallyPresent = originalBreakpoints.length > 0;
   let session;
   try {
     await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
@@ -62,9 +65,13 @@ async function run() {
       breakpointInitiallyPresent,
       "Code Cat should toggle the linked source breakpoint back",
     );
-    if (!breakpointInitiallyPresent) {
-      await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
-    }
+    replaceSourceBreakpointsAt(checkoutUri, breakpointLine, []);
+    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    assert.equal(
+      hasBreakpoint(checkoutUri, breakpointLine),
+      true,
+      "Code Cat should create the temporary smoke breakpoint",
+    );
 
     const started = waitForEvent(
       vscode.debug.onDidStartDebugSession,
@@ -105,7 +112,10 @@ async function run() {
         state.lastPauseVariableCount > 0 &&
         state.callStackFrameCount > 0 &&
         state.runtimeMap?.resolved &&
-        state.runtimeMap.frameCount > 0,
+        state.runtimeMap.visible &&
+        state.runtimeMap.frameCount === state.lastPauseFrameCount &&
+        state.runtimeMap.lastReceivedVersion === state.runtimeMap.stateVersion &&
+        state.runtimeMap.scriptError === undefined,
       "Code Cat to publish its first debug snapshot",
     );
     assert.ok(firstCodeCatState.lastPauseFrameCount > 0, "Code Cat should capture DAP frames");
@@ -129,9 +139,7 @@ async function run() {
     if (session) {
       await vscode.debug.stopDebugging(session);
     }
-    if (hasBreakpoint(checkoutUri, breakpointLine) !== breakpointInitiallyPresent) {
-      await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
-    }
+    replaceSourceBreakpointsAt(checkoutUri, breakpointLine, originalBreakpoints);
   }
 }
 
@@ -155,12 +163,36 @@ function withTimeout(promise, description) {
 }
 
 function hasBreakpoint(uri, zeroBasedLine) {
-  return vscode.debug.breakpoints.some(
+  return sourceBreakpointsAt(uri, zeroBasedLine).length > 0;
+}
+
+function sourceBreakpointsAt(uri, zeroBasedLine) {
+  return vscode.debug.breakpoints.filter(
     (breakpoint) =>
       breakpoint instanceof vscode.SourceBreakpoint &&
       breakpoint.location.uri.fsPath === uri.fsPath &&
       breakpoint.location.range.start.line === zeroBasedLine,
   );
+}
+
+function cloneSourceBreakpoint(breakpoint) {
+  return new vscode.SourceBreakpoint(
+    breakpoint.location,
+    breakpoint.enabled,
+    breakpoint.condition,
+    breakpoint.hitCondition,
+    breakpoint.logMessage,
+  );
+}
+
+function replaceSourceBreakpointsAt(uri, zeroBasedLine, replacements) {
+  const current = sourceBreakpointsAt(uri, zeroBasedLine);
+  if (current.length > 0) {
+    vscode.debug.removeBreakpoints(current);
+  }
+  if (replacements.length > 0) {
+    vscode.debug.addBreakpoints(replacements);
+  }
 }
 
 async function waitForValue(producer, predicate, description) {

@@ -151,6 +151,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     }));
     this.stateVersion += 1;
     this.lastSentFrameCount = frames.length;
+    this.lastAcknowledgedFrameCount = 0;
 
     void this.view.webview.postMessage({
       type: "state",

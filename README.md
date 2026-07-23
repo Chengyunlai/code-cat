@@ -54,5 +54,5 @@ The route is a hypothesis; the runtime trace is evidence. Code Cat deliberately 
 - The structural index uses Python declaration scanning, not a complete Python parser.
 - Route planning currently makes one model pass; a production version should use symbol/call-hierarchy retrieval followed by a smaller evidence-grounded model pass.
 - Variable capture is limited to the top frame and bounded by settings.
-- No session persistence, tests, marketplace packaging metadata, telemetry, or multi-root route disambiguation yet.
+- No session persistence, unit-test suite, CI, marketplace packaging metadata, telemetry, or multi-root route disambiguation yet.
 - The webview currently renders a focused execution map rather than an unrestricted mind-map editor.
