@@ -38,8 +38,15 @@ await runTests({
 async function preparePythonExtensions(sourceDir, targetDir) {
   await mkdir(targetDir, { recursive: true });
   const entries = await readdir(sourceDir, { withFileTypes: true });
+  const requiredPrefixes = [
+    "ms-python.python-",
+    "ms-python.debugpy-",
+    "ms-python.vscode-python-envs-",
+    "ms-python.vscode-pylance-",
+  ];
   const pythonExtensions = entries.filter(
-    (entry) => entry.isDirectory() && entry.name.startsWith("ms-python."),
+    (entry) =>
+      entry.isDirectory() && requiredPrefixes.some((prefix) => entry.name.startsWith(prefix)),
   );
   if (!pythonExtensions.some((entry) => entry.name.startsWith("ms-python.debugpy-"))) {
     throw new Error("Install ms-python.debugpy before running the VS Code smoke test.");

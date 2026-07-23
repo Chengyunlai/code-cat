@@ -6,7 +6,8 @@
   "publisher": "local",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.105.0"
+    "vscode": "^1.105.0",
+    "node": ">=22"
   },
   "extensionDependencies": [
     "ms-python.python",

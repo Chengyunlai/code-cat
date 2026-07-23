@@ -20,7 +20,7 @@ Prerequisites:
 - VS Code 1.105 or newer
 - The Microsoft Python and Python Debugger (`debugpy`) extensions
 - A VS Code language-model provider for AI route planning and explanations
-- Node.js 20 or newer
+- Node.js 22 or newer
 
 Then:
 

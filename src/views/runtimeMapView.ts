@@ -25,6 +25,7 @@ interface WebviewMessage {
 
 export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
+  private lastPostedFrameCount = 0;
   private readonly disposables: vscode.Disposable[] = [];
 
   public constructor(
@@ -55,6 +56,10 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     for (const disposable of this.disposables) {
       disposable.dispose();
     }
+  }
+
+  public smokeDiagnostics(): { readonly resolved: boolean; readonly frameCount: number } {
+    return { resolved: this.view !== undefined, frameCount: this.lastPostedFrameCount };
   }
 
   private postState(): void {
@@ -101,6 +106,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       fileLabel: frameLocationLabel(frame),
       selected: frame.id === state.selectedFrameId,
     }));
+    this.lastPostedFrameCount = frames.length;
 
     void this.view.webview.postMessage({
       type: "state",

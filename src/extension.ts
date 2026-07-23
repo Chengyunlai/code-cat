@@ -89,6 +89,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("codeCat.stepInto", () => runDebugCommand("stepInto")),
     vscode.commands.registerCommand("codeCat.stepOver", () => runDebugCommand("stepOver")),
   );
+
+  if (context.extensionMode !== vscode.ExtensionMode.Production) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand("codeCat.__smokeState", () => ({
+        session: store.snapshot(),
+        callStackFrameCount: callStackTree.getChildren().length,
+        runtimeMap: runtimeMap.smokeDiagnostics(),
+      })),
+    );
+  }
 }
 
 export function deactivate(): void {}

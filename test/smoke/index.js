@@ -33,10 +33,16 @@ async function run() {
     .findIndex((line) => line.includes("reservation = reserve_inventory"));
   assert.ok(breakpointLine >= 0, "The checkout example should contain the smoke breakpoint");
 
-  const breakpoint = new vscode.SourceBreakpoint(
-    new vscode.Location(checkoutUri, new vscode.Position(breakpointLine, 0)),
+  const codeCatLocation = {
+    path: checkoutUri.fsPath,
+    line: breakpointLine + 1,
+    column: 1,
+  };
+  await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+  assert.ok(
+    hasBreakpoint(checkoutUri, breakpointLine),
+    "Code Cat should create the linked source breakpoint",
   );
-  vscode.debug.addBreakpoints([breakpoint]);
 
   let session;
   try {
@@ -60,14 +66,63 @@ async function run() {
     assert.equal(stackItem.session.id, session.id);
     assert.equal(typeof stackItem.frameId, "number");
 
+    const firstCodeCatState = await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) =>
+        state?.session?.pauses?.length >= 1 &&
+        state.callStackFrameCount > 0 &&
+        state.runtimeMap?.resolved &&
+        state.runtimeMap.frameCount > 0,
+      "Code Cat to publish its first debug snapshot",
+    );
+    const firstPause = firstCodeCatState.session.pauses.at(-1);
+    assert.ok(firstPause.frames.length > 0, "Code Cat should capture DAP stack frames");
+    assert.ok(firstPause.variables.length > 0, "Code Cat should capture top-frame variables");
+
+    const stepped = waitForEvent(
+      vscode.debug.onDidChangeActiveStackItem,
+      (candidate) => candidate && "frameId" in candidate && candidate.session.id === session.id,
+      "Step Over to reach the next paused frame",
+    );
     await vscode.commands.executeCommand("codeCat.stepOver");
-    console.log("Code Cat smoke passed: activation, commands, debugpy start, breakpoint, and stack frame.");
+    await stepped;
+    await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) => state?.session?.pauses?.length >= 2,
+      "Code Cat to capture the Step Over pause",
+    );
+    console.log(
+      "Code Cat smoke passed: activation, linked breakpoint, debug snapshots, both views, and Step Over.",
+    );
   } finally {
     if (session) {
       await vscode.debug.stopDebugging(session);
     }
-    vscode.debug.removeBreakpoints([breakpoint]);
+    if (hasBreakpoint(checkoutUri, breakpointLine)) {
+      await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    }
   }
+}
+
+function hasBreakpoint(uri, zeroBasedLine) {
+  return vscode.debug.breakpoints.some(
+    (breakpoint) =>
+      breakpoint instanceof vscode.SourceBreakpoint &&
+      breakpoint.location.uri.fsPath === uri.fsPath &&
+      breakpoint.location.range.start.line === zeroBasedLine,
+  );
+}
+
+async function waitForValue(producer, predicate, description) {
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const value = await producer();
+    if (predicate(value)) {
+      return value;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Timed out waiting for ${description}`);
 }
 
 function waitForEvent(event, predicate, description, currentValue) {
