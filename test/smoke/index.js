@@ -17,11 +17,20 @@ async function run() {
     "codeCat.continue",
     "codeCat.stepInto",
     "codeCat.stepOver",
+    "codeCat.__startSmokeDebug",
+    "codeCat.__smokeState",
+    "codeCat.__showSmokeView",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
 
   await vscode.commands.executeCommand("workbench.view.extension.codeCat");
+  await vscode.commands.executeCommand("codeCat.runtimeMap.focus");
+  await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__showSmokeView"),
+    (shown) => shown === true,
+    "the Runtime Map view to resolve",
+  );
 
   const folder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(folder, "The Python example workspace should be open");
@@ -38,24 +47,38 @@ async function run() {
     line: breakpointLine + 1,
     column: 1,
   };
-  await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
-  assert.ok(
-    hasBreakpoint(checkoutUri, breakpointLine),
-    "Code Cat should create the linked source breakpoint",
-  );
-
+  const breakpointInitiallyPresent = hasBreakpoint(checkoutUri, breakpointLine);
   let session;
   try {
+    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    assert.equal(
+      hasBreakpoint(checkoutUri, breakpointLine),
+      !breakpointInitiallyPresent,
+      "Code Cat should toggle the linked source breakpoint",
+    );
+    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    assert.equal(
+      hasBreakpoint(checkoutUri, breakpointLine),
+      breakpointInitiallyPresent,
+      "Code Cat should toggle the linked source breakpoint back",
+    );
+    if (!breakpointInitiallyPresent) {
+      await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    }
+
     const started = waitForEvent(
       vscode.debug.onDidStartDebugSession,
       (candidate) => candidate.type === "debugpy",
       "debugpy session to start",
     );
-    await vscode.commands.executeCommand(
-      "codeCat.startGuidedDebug",
-      "How does checkout reserve inventory and charge payment?",
-    );
-    session = await started;
+    const [, startedSession] = await Promise.all([
+      withTimeout(
+        vscode.commands.executeCommand("codeCat.__startSmokeDebug"),
+        "Code Cat smoke debug command",
+      ),
+      started,
+    ]);
+    session = startedSession;
 
     const stackItem = await waitForEvent(
       vscode.debug.onDidChangeActiveStackItem,
@@ -66,18 +89,26 @@ async function run() {
     assert.equal(stackItem.session.id, session.id);
     assert.equal(typeof stackItem.frameId, "number");
 
+    await vscode.commands.executeCommand("codeCat.runtimeMap.focus");
+    await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__showSmokeView"),
+      (shown) => shown === true,
+      "the Runtime Map view to become visible after the debugger pauses",
+    );
+
     const firstCodeCatState = await waitForValue(
       () => vscode.commands.executeCommand("codeCat.__smokeState"),
       (state) =>
-        state?.session?.pauses?.length >= 1 &&
+        state?.debugSessionId === session.id &&
+        state.pauseCount >= 1 &&
+        state.lastPauseFrameCount > 0 &&
+        state.lastPauseVariableCount > 0 &&
         state.callStackFrameCount > 0 &&
         state.runtimeMap?.resolved &&
         state.runtimeMap.frameCount > 0,
       "Code Cat to publish its first debug snapshot",
     );
-    const firstPause = firstCodeCatState.session.pauses.at(-1);
-    assert.ok(firstPause.frames.length > 0, "Code Cat should capture DAP stack frames");
-    assert.ok(firstPause.variables.length > 0, "Code Cat should capture top-frame variables");
+    assert.ok(firstCodeCatState.lastPauseFrameCount > 0, "Code Cat should capture DAP frames");
 
     const stepped = waitForEvent(
       vscode.debug.onDidChangeActiveStackItem,
@@ -88,7 +119,7 @@ async function run() {
     await stepped;
     await waitForValue(
       () => vscode.commands.executeCommand("codeCat.__smokeState"),
-      (state) => state?.session?.pauses?.length >= 2,
+      (state) => state?.pauseCount >= 2,
       "Code Cat to capture the Step Over pause",
     );
     console.log(
@@ -98,10 +129,29 @@ async function run() {
     if (session) {
       await vscode.debug.stopDebugging(session);
     }
-    if (hasBreakpoint(checkoutUri, breakpointLine)) {
+    if (hasBreakpoint(checkoutUri, breakpointLine) !== breakpointInitiallyPresent) {
       await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
     }
   }
+}
+
+function withTimeout(promise, description) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`Timed out waiting for ${description}`)),
+      TIMEOUT_MS,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
 }
 
 function hasBreakpoint(uri, zeroBasedLine) {
@@ -115,14 +165,18 @@ function hasBreakpoint(uri, zeroBasedLine) {
 
 async function waitForValue(producer, predicate, description) {
   const deadline = Date.now() + TIMEOUT_MS;
+  let lastValue;
   while (Date.now() < deadline) {
     const value = await producer();
+    lastValue = value;
     if (predicate(value)) {
       return value;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(`Timed out waiting for ${description}`);
+  throw new Error(
+    `Timed out waiting for ${description}; last value: ${JSON.stringify(lastValue)}`,
+  );
 }
 
 function waitForEvent(event, predicate, description, currentValue) {

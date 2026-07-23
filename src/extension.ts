@@ -90,13 +90,23 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("codeCat.stepOver", () => runDebugCommand("stepOver")),
   );
 
-  if (context.extensionMode !== vscode.ExtensionMode.Production) {
+  if (context.extensionMode === vscode.ExtensionMode.Test) {
     context.subscriptions.push(
       vscode.commands.registerCommand("codeCat.__smokeState", () => ({
-        session: store.snapshot(),
+        debugSessionId: store.snapshot().debugSessionId,
+        pauseCount: store.snapshot().pauses.length,
+        lastPauseFrameCount: store.selectedPause()?.frames.length ?? 0,
+        lastPauseVariableCount: store.selectedPause()?.variables.length ?? 0,
         callStackFrameCount: callStackTree.getChildren().length,
         runtimeMap: runtimeMap.smokeDiagnostics(),
       })),
+      vscode.commands.registerCommand("codeCat.__startSmokeDebug", () =>
+        launchGuidedDebugSession(observer),
+      ),
+      vscode.commands.registerCommand("codeCat.__showSmokeView", async () => {
+        await vscode.commands.executeCommand("workbench.view.extension.codeCat");
+        return runtimeMap.showForSmoke();
+      }),
     );
   }
 }
@@ -169,6 +179,10 @@ async function startGuidedDebug(
     await locateRoute(store, tutor, question);
   }
 
+  await launchGuidedDebugSession(observer);
+}
+
+async function launchGuidedDebugSession(observer: DebugSessionObserver): Promise<void> {
   await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   const activeSession = vscode.debug.activeDebugSession;
   if (activeSession) {

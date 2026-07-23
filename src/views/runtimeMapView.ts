@@ -16,16 +16,24 @@ export interface RuntimeMapActions {
 
 interface WebviewMessage {
   readonly type?: unknown;
+  readonly error?: unknown;
   readonly question?: unknown;
   readonly nodeId?: unknown;
   readonly pauseId?: unknown;
   readonly frameId?: unknown;
   readonly command?: unknown;
+  readonly version?: unknown;
 }
 
 export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
-  private lastPostedFrameCount = 0;
+  private stateVersion = 0;
+  private lastSentFrameCount = 0;
+  private lastAcknowledgedFrameCount = 0;
+  private readyCount = 0;
+  private renderedStateCount = 0;
+  private lastReceivedVersion: number | undefined;
+  private scriptError: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
 
   public constructor(
@@ -48,6 +56,13 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     view.webview.html = createHtml(view.webview);
     this.disposables.push(
       view.webview.onDidReceiveMessage((message: unknown) => this.handleMessage(message)),
+      view.onDidDispose(() => {
+        if (this.view === view) {
+          this.view = undefined;
+          this.lastSentFrameCount = 0;
+          this.lastAcknowledgedFrameCount = 0;
+        }
+      }),
     );
     this.postState();
   }
@@ -58,8 +73,36 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     }
   }
 
-  public smokeDiagnostics(): { readonly resolved: boolean; readonly frameCount: number } {
-    return { resolved: this.view !== undefined, frameCount: this.lastPostedFrameCount };
+  public smokeDiagnostics(): {
+    readonly resolved: boolean;
+    readonly visible: boolean;
+    readonly frameCount: number;
+    readonly sentFrameCount: number;
+    readonly stateVersion: number;
+    readonly readyCount: number;
+    readonly renderedStateCount: number;
+    readonly lastReceivedVersion: number | undefined;
+    readonly scriptError: string | undefined;
+  } {
+    return {
+      resolved: this.view !== undefined,
+      visible: this.view?.visible ?? false,
+      frameCount: this.lastAcknowledgedFrameCount,
+      sentFrameCount: this.lastSentFrameCount,
+      stateVersion: this.stateVersion,
+      readyCount: this.readyCount,
+      renderedStateCount: this.renderedStateCount,
+      lastReceivedVersion: this.lastReceivedVersion,
+      scriptError: this.scriptError,
+    };
+  }
+
+  public showForSmoke(): boolean {
+    if (!this.view) {
+      return false;
+    }
+    this.view.show(true);
+    return this.view.visible;
   }
 
   private postState(): void {
@@ -106,10 +149,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       fileLabel: frameLocationLabel(frame),
       selected: frame.id === state.selectedFrameId,
     }));
-    this.lastPostedFrameCount = frames.length;
+    this.stateVersion += 1;
+    this.lastSentFrameCount = frames.length;
 
     void this.view.webview.postMessage({
       type: "state",
+      version: this.stateVersion,
       state: {
         route,
         pauses,
@@ -128,7 +173,19 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     }
     switch (value.type) {
       case "ready":
+        this.readyCount += 1;
         this.postState();
+        return;
+      case "renderedState":
+        this.renderedStateCount += 1;
+        this.lastReceivedVersion =
+          typeof value.version === "number" ? value.version : undefined;
+        if (this.lastReceivedVersion === this.stateVersion) {
+          this.lastAcknowledgedFrameCount = this.lastSentFrameCount;
+        }
+        return;
+      case "scriptError":
+        this.scriptError = typeof value.error === "string" ? value.error : "unknown script error";
         return;
       case "locateRoute":
         if (typeof value.question === "string" && value.question.trim()) {
@@ -290,6 +347,9 @@ function createHtml(webview: vscode.Webview): string {
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    window.addEventListener('error', (event) => {
+      vscode.postMessage({ type: 'scriptError', error: String(event.error || event.message) });
+    });
     const elements = {
       question: document.getElementById('question'),
       busy: document.getElementById('busy'),
@@ -319,7 +379,10 @@ function createHtml(webview: vscode.Webview): string {
     });
 
     window.addEventListener('message', (event) => {
-      if (event.data?.type === 'state') render(event.data.state);
+      if (event.data?.type === 'state') {
+        render(event.data.state);
+        vscode.postMessage({ type: 'renderedState', version: event.data.version });
+      }
     });
 
     function render(state) {
