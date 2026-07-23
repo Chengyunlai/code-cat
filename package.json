@@ -28,14 +28,17 @@
   "activationEvents": [
     "onView:codeCat.runtimeMap",
     "onView:codeCat.callStack",
-    "onCommand:codeCat.startGuidedDebug"
+    "onCommand:codeCat.startGuidedDebug",
+    "onCommand:codeCat.configureModelProvider",
+    "onCommand:codeCat.testModelProvider"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "codeCat.startGuidedDebug",
-        "title": "Code Cat: Start Guided Debug"
+        "title": "Code Cat: Start Guided Debug",
+        "icon": "$(debug-start)"
       },
       {
         "command": "codeCat.askProject",
@@ -47,7 +50,21 @@
       },
       {
         "command": "codeCat.clearSession",
-        "title": "Code Cat: Clear Session"
+        "title": "Code Cat: Clear Session",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "codeCat.configureModelProvider",
+        "title": "Code Cat: Configure Model Provider",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "codeCat.testModelProvider",
+        "title": "Code Cat: Test Model Provider"
+      },
+      {
+        "command": "codeCat.clearModelApiKey",
+        "title": "Code Cat: Clear Stored API Key"
       },
       {
         "command": "codeCat.revealLocation",
@@ -105,6 +122,11 @@
           "group": "navigation@2"
         },
         {
+          "command": "codeCat.configureModelProvider",
+          "when": "view == codeCat.runtimeMap",
+          "group": "navigation@3"
+        },
+        {
           "command": "codeCat.explainPause",
           "when": "view == codeCat.callStack",
           "group": "navigation@1"
@@ -114,6 +136,50 @@
     "configuration": {
       "title": "Code Cat",
       "properties": {
+        "codeCat.ai.provider": {
+          "type": "string",
+          "default": "vscode",
+          "scope": "application",
+          "enum": [
+            "vscode",
+            "openai",
+            "anthropic",
+            "gemini",
+            "deepseek",
+            "qwen",
+            "moonshot",
+            "zhipu",
+            "doubao",
+            "newapi",
+            "openaiCompatible"
+          ],
+          "enumDescriptions": [
+            "VS Code Language Model API; no Code Cat API key required.",
+            "OpenAI Responses API.",
+            "Anthropic Messages API.",
+            "Google Gemini generateContent API.",
+            "DeepSeek OpenAI-compatible API.",
+            "Alibaba Cloud DashScope OpenAI-compatible API.",
+            "Moonshot/Kimi OpenAI-compatible API.",
+            "Zhipu GLM OpenAI-compatible API.",
+            "Volcengine Ark OpenAI-compatible API.",
+            "A self-hosted or managed NewAPI instance.",
+            "Any HTTPS service compatible with /chat/completions."
+          ],
+          "description": "Active model provider. Prefer the Code Cat: Configure Model Provider command; API keys are stored separately in VS Code SecretStorage."
+        },
+        "codeCat.ai.model": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Model name for the selected API provider. Configure it through Code Cat: Configure Model Provider."
+        },
+        "codeCat.ai.baseUrl": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "API root URL for NewAPI or another OpenAI-compatible service, usually ending in /v1. API keys are never stored here."
+        },
         "codeCat.maxIndexedFiles": {
           "type": "number",
           "default": 400,

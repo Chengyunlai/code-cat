@@ -7,6 +7,8 @@ export const runtimeMapScript = String.raw`
       content: document.getElementById('content'),
       composerInner: document.getElementById('composer-inner'),
       composerMode: document.getElementById('composer-mode'),
+      configureModel: document.getElementById('configure-model'),
+      modelProviderLabel: document.getElementById('model-provider-label'),
       pathCount: document.getElementById('path-count'),
       pauseRail: document.getElementById('pause-rail'),
       question: document.getElementById('question'),
@@ -31,10 +33,12 @@ export const runtimeMapScript = String.raw`
       livePauseId: undefined,
       requestPending: false,
       requestKind: undefined,
+      modelProvider: { label: 'VS Code 内置模型' },
       debugging: false,
     };
 
     document.getElementById('locate').addEventListener('click', submitQuestion);
+    elements.configureModel.addEventListener('click', () => vscode.postMessage({ type: 'configureModel' }));
     elements.question.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -82,6 +86,12 @@ export const runtimeMapScript = String.raw`
       elements.pathCount.textContent = route ? String(route.nodes.length) : '';
       elements.stackCount.textContent = frames.length ? String(frames.length) : '';
       elements.variableCount.textContent = variables.length ? String(variables.length) : '';
+      const modelProvider = state.modelProvider || { label: 'VS Code 内置模型' };
+      elements.modelProviderLabel.textContent = modelProvider.detail
+        ? modelProvider.label + ' · ' + modelProvider.detail
+        : modelProvider.label;
+      elements.configureModel.title = '当前模型：' + elements.modelProviderLabel.textContent + '；点击配置';
+      elements.configureModel.disabled = requestPending;
       updateStatus(state);
       updateTabs();
       renderPauseRail(state);
@@ -174,6 +184,8 @@ export const runtimeMapScript = String.raw`
           ? '正在启动教学调试…'
           : state.requestKind === 'control'
             ? '正在执行调试操作…'
+            : state.requestKind === 'model'
+              ? '正在测试模型连接…'
             : '请求处理中…');
       } else if (state.debugStatus === 'ended') {
         elements.statusDot.classList.add('success');
@@ -221,11 +233,15 @@ export const runtimeMapScript = String.raw`
           ? '正在启动教学调试'
           : state.requestKind === 'control'
             ? '正在执行调试操作'
+            : state.requestKind === 'model'
+              ? '正在测试模型连接'
           : '正在理解项目';
       const detail = message || (state.requestKind === 'debug'
         ? '正在选择并连接 Python 调试配置…'
         : state.requestKind === 'control'
           ? '正在推进调试器并等待新的运行时状态…'
+          : state.requestKind === 'model'
+            ? '正在验证 API Key、Base URL 和模型名…'
         : '请求处理中…');
       const heading = sectionHeading(title, detail);
       const skeleton = document.createElement('div');

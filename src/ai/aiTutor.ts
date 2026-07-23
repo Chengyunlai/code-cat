@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { DebugPause, RouteNode, RoutePlan, TutorMessage } from "../domain/model";
 import { PythonProjectIndex } from "../project/pythonProjectIndex";
+import { ModelProviderService } from "./modelProviderService";
 
 interface ModelRouteNode {
   readonly title?: unknown;
@@ -18,7 +19,10 @@ interface ModelRoutePlan {
 }
 
 export class AiTutor {
-  public constructor(private readonly projectIndex: PythonProjectIndex) {}
+  public constructor(
+    private readonly projectIndex: PythonProjectIndex,
+    private readonly modelProvider: ModelProviderService,
+  ) {}
 
   public async locateRoute(
     question: string,
@@ -82,24 +86,7 @@ export class AiTutor {
   }
 
   private async request(prompt: string, token: vscode.CancellationToken): Promise<string> {
-    const models = await vscode.lm.selectChatModels();
-    const model = models[0];
-    if (!model) {
-      throw new Error(
-        "No VS Code language model is available. Sign in to a compatible model provider, then retry.",
-      );
-    }
-
-    const response = await model.sendRequest(
-      [vscode.LanguageModelChatMessage.User(prompt)],
-      {},
-      token,
-    );
-    let result = "";
-    for await (const fragment of response.text) {
-      result += fragment;
-    }
-    return result.trim();
+    return this.modelProvider.request(prompt, token);
   }
 
   private async parseRoute(question: string, raw: string): Promise<RoutePlan> {

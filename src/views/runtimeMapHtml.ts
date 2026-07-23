@@ -28,7 +28,14 @@ export function createRuntimeMapHtml(webview: vscode.Webview): string {
               <span id="status-label" class="status-label">提出问题，建立第一条代码路径</span>
             </div>
           </div>
-          <div class="header-mark" aria-hidden="true">⌁</div>
+          <div class="header-actions">
+            <button id="configure-model" type="button" class="model-provider" aria-label="配置大模型" title="配置大模型">
+              <span class="model-provider-dot" aria-hidden="true"></span>
+              <span id="model-provider-label" class="model-provider-label">VS Code 内置模型</span>
+              <span class="model-provider-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div class="header-mark" aria-hidden="true">⌁</div>
+          </div>
         </div>
         <nav id="tabs" class="tabs" role="tablist" aria-label="Code Cat 视图">
           <button id="tab-overview" type="button" class="tab" role="tab" data-tab="overview" aria-controls="content" aria-selected="true" tabindex="0">当前步骤</button>

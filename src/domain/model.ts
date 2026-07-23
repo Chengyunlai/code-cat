@@ -58,7 +58,7 @@ export interface SessionState {
   readonly selectedFrameId?: number;
   readonly tutorMessage?: TutorMessage;
   readonly busyMessage?: string;
-  readonly requestKind?: "route" | "pause" | "debug" | "control";
+  readonly requestKind?: "route" | "pause" | "debug" | "control" | "model";
 }
 
 export interface DapStackFrame {

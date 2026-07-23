@@ -13,6 +13,8 @@ export interface RuntimeMapActions {
   revealLocation(location: SourceLocation, frameId?: number): Promise<void>;
   toggleBreakpoint(location: SourceLocation): void;
   runDebugCommand(command: "continue" | "stepInto" | "stepOver"): Promise<void>;
+  configureModelProvider(): Promise<void>;
+  modelProviderStatus(): { readonly label: string; readonly detail?: string };
 }
 
 interface WebviewMessage {
@@ -45,6 +47,11 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     this.disposables.push(
       store.onDidChange(() => this.postState()),
       vscode.debug.onDidChangeBreakpoints(() => this.postState()),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration("codeCat.ai")) {
+          this.postState();
+        }
+      }),
     );
   }
 
@@ -182,6 +189,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           state.debugStatus === "paused" ? state.pauses.at(-1)?.id : undefined,
         requestPending: Boolean(state.requestKind || state.busyMessage),
         requestKind: state.requestKind,
+        modelProvider: this.actions.modelProviderStatus(),
         debugging: Boolean(state.debugSessionId),
       },
     });
@@ -221,6 +229,10 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         await this.actions.explainPause(
           typeof value.question === "string" ? value.question.trim() : undefined,
         );
+        return;
+      case "configureModel":
+        await this.actions.configureModelProvider();
+        this.postState();
         return;
       case "selectRouteNode": {
         const node = this.store

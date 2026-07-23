@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { AiTutor } from "./ai/aiTutor";
+import { ModelProviderService } from "./ai/modelProviderService";
 import { revealLocation } from "./core/locations";
 import { SessionActionCoordinator } from "./core/sessionActionCoordinator";
 import { SessionStore } from "./core/sessionStore";
@@ -14,7 +15,8 @@ import { RuntimeMapActions, RuntimeMapView } from "./views/runtimeMapView";
 export function activate(context: vscode.ExtensionContext): void {
   const store = new SessionStore();
   const projectIndex = new PythonProjectIndex();
-  const tutor = new AiTutor(projectIndex);
+  const modelProvider = new ModelProviderService(context);
+  const tutor = new AiTutor(projectIndex, modelProvider);
   const observer = new DebugSessionObserver(store);
   const callStackTree = new CallStackTree(store);
   const actionCoordinator = new SessionActionCoordinator(store);
@@ -37,6 +39,10 @@ export function activate(context: vscode.ExtensionContext): void {
     toggleBreakpoint: (location) => toggleSourceBreakpoint(location),
     runDebugCommand: (command) =>
       actionCoordinator.run("control", () => runDebugCommand(store, command)),
+    configureModelProvider: async () => {
+      await vscode.commands.executeCommand("codeCat.configureModelProvider");
+    },
+    modelProviderStatus: () => modelProvider.status(),
   };
   const runtimeMap = new RuntimeMapView(context.extensionUri, store, actions);
 
@@ -78,6 +84,26 @@ export function activate(context: vscode.ExtensionContext): void {
           "Wait for the current Code Cat request to finish before clearing the session.",
         );
       }
+    }),
+    vscode.commands.registerCommand("codeCat.configureModelProvider", async () => {
+      if (!modelConfigurationAvailable(store)) {
+        return;
+      }
+      await runModelProviderCommand(() => modelProvider.configure());
+    }),
+    vscode.commands.registerCommand("codeCat.testModelProvider", async () => {
+      if (!modelConfigurationAvailable(store)) {
+        return;
+      }
+      await runModelProviderCommand(() =>
+        actionCoordinator.run("model", () => modelProvider.testCurrent()),
+      );
+    }),
+    vscode.commands.registerCommand("codeCat.clearModelApiKey", async () => {
+      if (!modelConfigurationAvailable(store)) {
+        return;
+      }
+      await runModelProviderCommand(() => modelProvider.clearCurrentApiKey());
     }),
     vscode.commands.registerCommand(
       "codeCat.revealLocation",
@@ -351,6 +377,28 @@ function handleTutorError(store: SessionStore, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   store.setTutorMessage({ id: randomUUID(), kind: "error", markdown: message });
   void vscode.window.showErrorMessage(`Code Cat: ${message}`);
+}
+
+async function runModelProviderCommand(action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    if (error instanceof vscode.CancellationError) {
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    void vscode.window.showErrorMessage(`Code Cat model provider: ${message}`);
+  }
+}
+
+function modelConfigurationAvailable(store: SessionStore): boolean {
+  if (!store.snapshot().requestKind) {
+    return true;
+  }
+  void vscode.window.showInformationMessage(
+    "Wait for the current Code Cat request to finish before changing the model provider.",
+  );
+  return false;
 }
 
 function isSourceLocation(value: unknown): value is SourceLocation {

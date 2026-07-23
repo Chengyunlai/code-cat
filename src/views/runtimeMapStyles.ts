@@ -70,6 +70,7 @@ export const runtimeMapStyles = String.raw`
     }
     .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .title-copy { min-width: 0; }
+    .header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .product-name { margin: 0; font-size: 14px; font-weight: 720; text-wrap: balance; }
     .session-title { margin: 2px 0 0; color: var(--cc-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .session-status { display: flex; align-items: center; gap: 7px; min-width: 0; margin-top: 8px; color: var(--cc-muted); font-size: 12px; }
@@ -89,6 +90,24 @@ export const runtimeMapStyles = String.raw`
       font-size: 17px;
       font-weight: 800;
     }
+    .model-provider {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 44px;
+      max-width: 230px;
+      min-height: 44px;
+      padding: 6px 10px;
+      color: var(--cc-muted);
+      background: var(--cc-panel);
+      border: 1px solid transparent;
+      border-radius: 999px;
+      text-align: left;
+    }
+    .model-provider:hover { color: var(--cc-ink); border-color: var(--cc-border); }
+    .model-provider-dot { flex: 0 0 auto; width: 7px; height: 7px; background: var(--cc-primary); border-radius: 50%; }
+    .model-provider-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 650; }
+    .model-provider-chevron { flex: 0 0 auto; color: var(--cc-faint); font-size: 13px; }
     .tabs { display: flex; gap: 4px; margin-top: 14px; overflow-x: auto; scrollbar-width: none; }
     .tabs::-webkit-scrollbar { display: none; }
     .tab {
@@ -362,6 +381,8 @@ export const runtimeMapStyles = String.raw`
       .overview-grid .evidence { margin-top: 0; }
     }
     @media (max-width: 420px) {
+      .model-provider { width: 44px; padding: 0; justify-content: center; }
+      .model-provider-label, .model-provider-chevron { display: none; }
       .composer-shortcut { display: none; }
       .send { min-width: 44px; width: 44px; padding: 0; }
       .send-label { display: none; }

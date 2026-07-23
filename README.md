@@ -5,7 +5,7 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 ## Current vertical slice
 
 - Build a cached structural index of Python files, classes, functions, and async functions.
-- Ask an available VS Code language model to propose 3–8 high-value reading stops.
+- Ask a configured VS Code or bring-your-own-key model to propose 3–8 high-value reading stops.
 - Open every proposed stop in the editor and toggle a linked source breakpoint from the map.
 - Observe Python/debugpy Debug Adapter Protocol traffic without replacing the Python debugger.
 - Capture the real call stack and bounded top-frame variables at each pause.
@@ -21,7 +21,7 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 
 - VS Code 1.105 or newer.
 - Python 3 installed and available to VS Code.
-- A model provider that registers a model with the VS Code Language Model API, signed in and enabled. Code Cat uses this API for route planning and explanations; installing a standalone AI sidebar does not necessarily make its models available through the API.
+- Either a model exposed through the VS Code Language Model API, or an API key for one of the providers listed below.
 - Node.js 22 or newer only when building Code Cat from source.
 
 ### 1. Install the Python extensions
@@ -66,12 +66,43 @@ Replace the example path and `X.Y.Z` with the exact package path and version pri
 
 After installation, run **Developer: Reload Window** from the Command Palette so the Code Cat activity-bar icon and commands are loaded.
 
-### 3. Select Python and verify the model provider
+### 3. Select Python and configure the model provider
 
 1. Open the Python project as a folder, not just an individual file.
 2. Run **Python: Select Interpreter** and choose the environment that can run the project.
-3. Sign in to a compatible VS Code model provider.
-4. If Code Cat reports `No VS Code language model is available`, enable or sign in to a provider that exposes models through the VS Code Language Model API, reload the window, and retry.
+3. Click the model-provider pill in the Code Cat header, or run **Code Cat: Configure Model Provider**.
+4. Choose a provider, confirm its model, and enter its API key when required.
+5. Select **Test connection** after saving, or run **Code Cat: Test Model Provider** later.
+
+The default option is **VS Code built-in model**, which keeps the previous Language Model API
+behavior and does not ask Code Cat for a key. Direct API configuration supports:
+
+| Provider preset | Protocol | Extra input |
+| --- | --- | --- |
+| OpenAI | Responses API | API key and editable model |
+| Anthropic Claude | Messages API | API key and editable model |
+| Google Gemini | `generateContent` | API key and editable model |
+| DeepSeek | OpenAI-compatible Chat Completions | API key and editable model |
+| Alibaba Qwen | DashScope OpenAI-compatible API | API key and editable model |
+| Moonshot / Kimi | OpenAI-compatible API | API key and editable model |
+| Zhipu GLM | OpenAI-compatible API | API key and editable model |
+| Doubao / Volcengine Ark | OpenAI-compatible API | API key and inference endpoint ID |
+| NewAPI | OpenAI-compatible API | API key, Base URL, and channel model name |
+| Other compatible service | OpenAI-compatible API | API key, Base URL, and model name |
+
+For NewAPI, enter the API root such as `https://newapi.example.com/v1`, not the full
+`/chat/completions` endpoint. The model must be the exact model or alias exposed by that
+NewAPI deployment. HTTPS is required except for `localhost` development endpoints.
+
+API keys are stored with VS Code `SecretStorage`; they are not written to the repository,
+workspace settings, user `settings.json`, logs, or model prompts. Code Cat rejects cross-origin
+HTTP redirects for API requests so an authorization header cannot silently follow a redirect.
+The non-secret provider, model, and NewAPI Base URL remain visible under `Code Cat › AI` in
+VS Code Settings. Run **Code Cat: Clear Stored API Key** to delete the current provider's key.
+
+If Code Cat reports `No VS Code language model is available`, either sign in to a provider that
+exposes a model through the VS Code Language Model API, or configure one of the direct API
+providers above.
 
 ### 4. First guided-debug session
 
@@ -122,7 +153,7 @@ npm run smoke:vscode
 
 Set `CODE_CAT_VSCODE_EXTENSIONS_DIR` only when the isolated target itself must move. Point it to a dedicated test directory, never to the normal user extensions directory; the runner populates it with only the allowed Python dependencies.
 
-`npm run smoke:vscode` launches an isolated Extension Host using the installed VS Code application and explicit Microsoft Python extension dependencies. It verifies activation, linked breakpoint creation and restoration, debugpy startup, real pauses, captured stack frames and variables, native call-stack data, Runtime Map rendering, and Step Over.
+`npm run smoke:vscode` launches an isolated Extension Host using the installed VS Code application and explicit Microsoft Python extension dependencies. It verifies activation, model-provider command registration, linked breakpoint creation and restoration, debugpy startup, real pauses, captured stack frames and variables, native call-stack data, Runtime Map rendering, and Step Over.
 
 The route is a hypothesis; the runtime trace is evidence. Code Cat deliberately displays both.
 

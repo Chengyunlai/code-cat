@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
+const http = require("node:http");
 const vscode = require("vscode");
+const { requestHttpModel } = require("../../dist/ai/modelClients");
 
 const TIMEOUT_MS = 30_000;
 
@@ -13,6 +15,9 @@ async function run() {
   for (const command of [
     "codeCat.startGuidedDebug",
     "codeCat.askProject",
+    "codeCat.configureModelProvider",
+    "codeCat.testModelProvider",
+    "codeCat.clearModelApiKey",
     "codeCat.explainPause",
     "codeCat.continue",
     "codeCat.stepInto",
@@ -23,6 +28,8 @@ async function run() {
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
+
+  await testHttpModelClients();
 
   await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   await vscode.commands.executeCommand("codeCat.runtimeMap.focus");
@@ -158,6 +165,78 @@ async function run() {
     }
     replaceSourceBreakpointsAt(checkoutUri, breakpointLine, originalBreakpoints);
   }
+}
+
+async function testHttpModelClients() {
+  const requests = [];
+  const server = http.createServer(async (request, response) => {
+    const body = await readRequestBody(request);
+    requests.push({ url: request.url, headers: request.headers, body: JSON.parse(body) });
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/responses") {
+      response.end(JSON.stringify({ output: [{ content: [{ text: "openai-ok" }] }] }));
+    } else if (request.url === "/chat/completions") {
+      response.end(JSON.stringify({ choices: [{ message: { content: "chat-ok" } }] }));
+    } else if (request.url === "/messages") {
+      response.end(JSON.stringify({ content: [{ type: "text", text: "anthropic-ok" }] }));
+    } else if (request.url === "/models/gemini-test:generateContent") {
+      response.end(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: "gemini-ok" }] } }] }),
+      );
+    } else {
+      response.statusCode = 404;
+      response.end(JSON.stringify({ error: { message: "unexpected smoke path" } }));
+    }
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const cancellation = new vscode.CancellationTokenSource();
+  try {
+    const common = { baseUrl, model: "smoke-model", apiKey: "smoke-secret", prompt: "ping" };
+    assert.equal(
+      await requestHttpModel({ ...common, transport: "openai-responses" }, cancellation.token),
+      "openai-ok",
+    );
+    assert.equal(
+      await requestHttpModel({ ...common, transport: "openai-chat" }, cancellation.token),
+      "chat-ok",
+    );
+    assert.equal(
+      await requestHttpModel({ ...common, transport: "anthropic" }, cancellation.token),
+      "anthropic-ok",
+    );
+    assert.equal(
+      await requestHttpModel(
+        { ...common, transport: "gemini", model: "gemini-test" },
+        cancellation.token,
+      ),
+      "gemini-ok",
+    );
+    assert.equal(requests.length, 4);
+    assert.equal(requests[0].headers.authorization, "Bearer smoke-secret");
+    assert.equal(requests[1].body.messages[0].content, "ping");
+    assert.equal(requests[2].headers["x-api-key"], "smoke-secret");
+    assert.equal(requests[2].headers["anthropic-version"], "2023-06-01");
+    assert.equal(requests[3].headers["x-goog-api-key"], "smoke-secret");
+    assert.equal(requests[3].body.contents[0].parts[0].text, "ping");
+  } finally {
+    cancellation.dispose();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+function readRequestBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
 }
 
 function withTimeout(promise, description) {
