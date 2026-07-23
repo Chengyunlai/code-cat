@@ -18,6 +18,21 @@ interface ModelRoutePlan {
   readonly nodes?: unknown;
 }
 
+export type TutorGuidanceCode =
+  | "no-workspace"
+  | "no-python-files"
+  | "ask-code-question";
+
+export class TutorGuidanceError extends Error {
+  public constructor(
+    public readonly code: TutorGuidanceCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TutorGuidanceError";
+  }
+}
+
 export class AiTutor {
   public constructor(
     private readonly projectIndex: PythonProjectIndex,
@@ -28,6 +43,16 @@ export class AiTutor {
     question: string,
     token: vscode.CancellationToken,
   ): Promise<RoutePlan> {
+    const readinessIssue = await this.projectIndex.readinessIssue();
+    if (readinessIssue) {
+      throw new TutorGuidanceError(readinessIssue.kind, readinessIssue.message);
+    }
+    if (isGreetingOnly(question)) {
+      throw new TutorGuidanceError(
+        "ask-code-question",
+        "请描述一个具体的代码行为，例如“登录请求在哪里校验 Token？”或“订单创建会经过哪些函数？”。",
+      );
+    }
     const projectContext = await this.projectIndex.promptContext(question);
     const response = await this.request(
       [
@@ -94,11 +119,13 @@ export class AiTutor {
     try {
       parsed = JSON.parse(stripCodeFence(raw)) as ModelRoutePlan;
     } catch {
-      throw new Error("The language model did not return a valid route plan.");
+      throw new Error(
+        "模型没有返回可识别的代码路径。请重新提问；如果持续出现，请更换更适合代码分析的模型。",
+      );
     }
 
     if (!Array.isArray(parsed.nodes)) {
-      throw new Error("The language model returned a route plan without nodes.");
+      throw new Error("模型返回的代码路径缺少节点。请换一个更具体的问题后重试。");
     }
 
     const nodes: RouteNode[] = [];
@@ -137,9 +164,9 @@ export class AiTutor {
       });
     }
 
-    if (nodes.length < 3) {
+    if (nodes.length === 0) {
       throw new Error(
-        "The proposed route did not resolve to at least three Python stops in this workspace.",
+        "模型返回的路径无法映射到当前 Python 项目。请换一个更具体的问题；如果持续出现，请检查所选模型是否适合代码分析。",
       );
     }
 
@@ -159,4 +186,12 @@ function stripCodeFence(value: string): string {
     .replace(/^```(?:json)?\s*/u, "")
     .replace(/\s*```$/u, "")
     .trim();
+}
+
+function isGreetingOnly(value: string): boolean {
+  const normalized = value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\s!！?？。，,.、~～]+/gu, "");
+  return /^(你好|您好|嗨|哈喽|hello|hi|hey|在吗|测试|test)$/u.test(normalized);
 }

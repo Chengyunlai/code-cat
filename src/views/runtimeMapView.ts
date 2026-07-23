@@ -47,6 +47,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     this.disposables.push(
       store.onDidChange(() => this.postState()),
       vscode.debug.onDidChangeBreakpoints(() => this.postState()),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => this.postState()),
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration("codeCat.ai")) {
           this.postState();
@@ -195,6 +196,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         requestKind: state.requestKind,
         modelProvider: this.actions.modelProviderStatus(),
         debugging: Boolean(state.debugSessionId),
+        workspaceOpen: Boolean(vscode.workspace.workspaceFolders?.length),
       },
     });
   }
@@ -237,6 +239,9 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       case "configureModel":
         await this.actions.configureModelProvider();
         this.postState();
+        return;
+      case "openFolder":
+        await vscode.commands.executeCommand("vscode.openFolder");
         return;
       case "selectRouteNode": {
         const node = this.store

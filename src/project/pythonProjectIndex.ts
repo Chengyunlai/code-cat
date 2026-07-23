@@ -16,6 +16,11 @@ export interface PythonProjectSnapshot {
   readonly truncated: boolean;
 }
 
+export interface PythonProjectReadinessIssue {
+  readonly kind: "no-workspace" | "no-python-files";
+  readonly message: string;
+}
+
 type WorkspaceRelativePythonPath = string & {
   readonly __workspaceRelativePythonPath: unique symbol;
 };
@@ -122,6 +127,23 @@ export class PythonProjectIndex implements vscode.Disposable {
       `Symbols (${project.symbols.length} indexed; ${chosen.length} shown):`,
       symbolList,
     ].join("\n");
+  }
+
+  public async readinessIssue(): Promise<PythonProjectReadinessIssue | undefined> {
+    if (!(vscode.workspace.workspaceFolders?.length)) {
+      return {
+        kind: "no-workspace",
+        message: "请先在 VS Code 中打开一个包含 Python 代码的项目文件夹。",
+      };
+    }
+    const project = await this.snapshot();
+    if (project.files.length === 0) {
+      return {
+        kind: "no-python-files",
+        message: "当前工作区没有找到 Python 文件。请打开正确的项目，或确认源码未被排除。",
+      };
+    }
+    return undefined;
   }
 
   public async resolveFile(candidate: string): Promise<string | undefined> {

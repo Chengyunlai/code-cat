@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
-import { AiTutor } from "./ai/aiTutor";
+import { AiTutor, TutorGuidanceError } from "./ai/aiTutor";
 import { ModelProviderService } from "./ai/modelProviderService";
 import { revealLocation } from "./core/locations";
 import { SessionActionCoordinator } from "./core/sessionActionCoordinator";
@@ -379,6 +379,18 @@ function handleTutorError(store: SessionStore, error: unknown): void {
     return;
   }
   const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof TutorGuidanceError) {
+    store.setTutorMessage({ id: randomUUID(), kind: "system", markdown: message });
+    const action = error.code === "no-workspace" ? "打开文件夹" : undefined;
+    void vscode.window
+      .showInformationMessage(`Code Cat: ${message}`, ...(action ? [action] : []))
+      .then(async (selection) => {
+        if (selection === "打开文件夹") {
+          await vscode.commands.executeCommand("vscode.openFolder");
+        }
+      });
+    return;
+  }
   store.setTutorMessage({ id: randomUUID(), kind: "error", markdown: message });
   void vscode.window.showErrorMessage(`Code Cat: ${message}`);
 }

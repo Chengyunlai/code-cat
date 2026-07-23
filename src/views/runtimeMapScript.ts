@@ -35,6 +35,7 @@ export const runtimeMapScript = String.raw`
       requestKind: undefined,
       modelProvider: { label: 'VS Code 内置模型' },
       debugging: false,
+      workspaceOpen: true,
     };
 
     document.getElementById('locate').addEventListener('click', submitQuestion);
@@ -100,10 +101,14 @@ export const runtimeMapScript = String.raw`
       view.className = 'view';
       const paused = state.debugStatus === 'paused' && frames.length > 0;
       const livePause = selectedPauseIsLive(state);
-      elements.composerMode.textContent = paused
+      elements.composerMode.textContent = !state.workspaceOpen
+        ? '需要打开 Python 项目'
+        : paused
         ? livePause ? '基于当前暂停追问' : '分析历史暂停快照'
         : route ? '提出新的代码路径问题' : '定位代码路径';
-      elements.question.placeholder = paused
+      elements.question.placeholder = !state.workspaceOpen
+        ? '打开项目后即可定位代码路径'
+        : paused
         ? livePause ? '为什么停在这里？' : '这个历史暂停说明了什么？'
         : route
           ? '输入新的代码问题'
@@ -111,7 +116,7 @@ export const runtimeMapScript = String.raw`
       const sendLabel = paused ? (livePause ? '解释当前暂停' : '解释历史快照') : '定位代码路径';
       elements.send.title = sendLabel;
       elements.send.setAttribute('aria-label', sendLabel);
-      elements.question.disabled = requestPending;
+      elements.question.disabled = requestPending || !state.workspaceOpen;
       updateSendAvailability();
       elements.composerInner.classList.toggle('busy', requestPending);
       if (state.requestPending || state.busyMessage) renderBusy(view, state.busyMessage, state);
@@ -123,7 +128,7 @@ export const runtimeMapScript = String.raw`
     }
 
     function submitQuestion() {
-      if (requestPending) return;
+      if (requestPending || !currentState.workspaceOpen) return;
       const question = elements.question.value.trim();
       if (!question) {
         elements.question.focus();
@@ -145,7 +150,7 @@ export const runtimeMapScript = String.raw`
     }
 
     function updateSendAvailability() {
-      elements.send.disabled = requestPending || !elements.question.value.trim();
+      elements.send.disabled = requestPending || !currentState.workspaceOpen || !elements.question.value.trim();
     }
 
     function beginLocalRequest(buttons) {
@@ -187,6 +192,8 @@ export const runtimeMapScript = String.raw`
             : state.requestKind === 'model'
               ? '正在测试模型连接…'
             : '请求处理中…');
+      } else if (!state.workspaceOpen) {
+        elements.statusLabel.textContent = '未打开 Python 项目';
       } else if (state.debugStatus === 'ended') {
         elements.statusDot.classList.add('success');
         elements.statusLabel.textContent = pauses.length
@@ -263,14 +270,25 @@ export const runtimeMapScript = String.raw`
       } else if (route) {
         renderRouteReady(root, state);
       } else {
-        renderEmpty(root);
+        renderEmpty(root, state);
       }
     }
 
-    function renderEmpty(root) {
+    function renderEmpty(root, state) {
       const empty = document.createElement('section');
       empty.className = 'empty-state';
-      empty.innerHTML = '<div class="empty-copy"><h2>追踪一个代码行为</h2><p>描述你想理解的功能、请求或异常。Code Cat 会定位入口和调用链，并把断点、栈帧与变量同步到同一条路径。</p></div>';
+      const copy = document.createElement('div');
+      copy.className = 'empty-copy';
+      copy.innerHTML = state.workspaceOpen
+        ? '<h2>追踪一个代码行为</h2><p>描述你想理解的功能、请求或异常。Code Cat 会定位入口和调用链，并把断点、栈帧与变量同步到同一条路径。</p>'
+        : '<h2>先打开一个 Python 项目</h2><p>Code Cat 需要读取项目中的文件和符号，才能建立真实的代码路径。</p>';
+      empty.appendChild(copy);
+      if (!state.workspaceOpen) {
+        const actions = document.createElement('div');
+        actions.className = 'action-row';
+        actions.appendChild(actionButton('打开文件夹', 'primary', () => vscode.postMessage({ type: 'openFolder' })));
+        empty.appendChild(actions);
+      }
       root.appendChild(empty);
     }
 

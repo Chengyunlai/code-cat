@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const http = require("node:http");
 const vscode = require("vscode");
+const { AiTutor } = require("../../dist/ai/aiTutor");
 const { requestHttpModel } = require("../../dist/ai/modelClients");
 const {
   modelProviderSecretName,
@@ -35,6 +36,7 @@ async function run() {
   }
 
   await testHttpModelClients();
+  await testRoutePreflight();
   await testProviderSpecificSettings();
   testModelProviderSecurity();
 
@@ -171,6 +173,64 @@ async function run() {
       await vscode.debug.stopDebugging(session);
     }
     replaceSourceBreakpointsAt(checkoutUri, breakpointLine, originalBreakpoints);
+  }
+}
+
+async function testRoutePreflight() {
+  const cancellation = new vscode.CancellationTokenSource();
+  try {
+    let emptyProjectModelRequests = 0;
+    const emptyProjectTutor = new AiTutor(
+      {
+        readinessIssue: async () => ({
+          kind: "no-workspace",
+          message: "请先在 VS Code 中打开一个包含 Python 代码的项目文件夹。",
+        }),
+        promptContext: async () => "Python files (0):\n\nSymbols (0 indexed; 0 shown):",
+        resolveFile: async () => undefined,
+      },
+      {
+        request: async () => {
+          emptyProjectModelRequests += 1;
+          return JSON.stringify({ summary: "none", nodes: [] });
+        },
+      },
+    );
+    await assert.rejects(
+      emptyProjectTutor.locateRoute("你好", cancellation.token),
+      /请先在 VS Code 中打开一个包含 Python 代码的项目文件夹/u,
+    );
+    assert.equal(
+      emptyProjectModelRequests,
+      0,
+      "an unusable project must fail before spending a model request",
+    );
+
+    let greetingModelRequests = 0;
+    const greetingTutor = new AiTutor(
+      {
+        readinessIssue: async () => undefined,
+        promptContext: async () => "Python files (1):\napp.py\n\nSymbols (3 indexed; 3 shown):",
+        resolveFile: async () => undefined,
+      },
+      {
+        request: async () => {
+          greetingModelRequests += 1;
+          return JSON.stringify({ summary: "none", nodes: [] });
+        },
+      },
+    );
+    await assert.rejects(
+      greetingTutor.locateRoute("你好", cancellation.token),
+      /请描述一个具体的代码行为/u,
+    );
+    assert.equal(
+      greetingModelRequests,
+      0,
+      "a greeting must be handled before spending a model request",
+    );
+  } finally {
+    cancellation.dispose();
   }
 }
 
