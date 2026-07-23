@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
 import { HttpModelTransport, requestHttpModel } from "./modelClients";
+import {
+  modelProviderSecretName,
+  normalizeModelBaseUrl,
+} from "./modelProviderSecurity";
 
 export type ModelProviderId =
   | "vscode"
@@ -49,7 +53,7 @@ const PROVIDERS: readonly ProviderDefinition[] = [
     description: "使用 OpenAI Responses API",
     transport: "openai-responses",
     defaultBaseUrl: "https://api.openai.com/v1",
-    defaultModel: "gpt-5.6-terra",
+    defaultModel: "gpt-4.1-mini",
   },
   {
     id: "anthropic",
@@ -144,21 +148,23 @@ export class ModelProviderService {
     if (provider.definition.id === "vscode") {
       return requestVsCodeModel(prompt, token);
     }
-    const apiKey = await this.context.secrets.get(secretName(provider.definition.id));
-    if (!apiKey) {
-      throw new Error(
-        `${provider.definition.label} API Key has not been configured. Run “Code Cat: Configure Model Provider”.`,
-      );
-    }
     if (!provider.definition.transport || !provider.baseUrl || !provider.model) {
       throw new Error(
         `${provider.definition.label} configuration is incomplete. Run “Code Cat: Configure Model Provider”.`,
       );
     }
+    const apiKey = await this.context.secrets.get(
+      modelProviderSecretName(provider.definition.id, provider.baseUrl),
+    );
+    if (!apiKey) {
+      throw new Error(
+        `${provider.definition.label} API Key has not been configured. Run “Code Cat: Configure Model Provider”.`,
+      );
+    }
     return requestHttpModel(
       {
         transport: provider.definition.transport,
-        baseUrl: normalizeBaseUrl(provider.baseUrl),
+        baseUrl: normalizeModelBaseUrl(provider.baseUrl),
         model: provider.model,
         apiKey,
         prompt,
@@ -192,6 +198,8 @@ export class ModelProviderService {
       return;
     }
 
+    const savedModel = this.readProviderSetting("models", provider.id);
+    const savedBaseUrl = this.readProviderSetting("baseUrls", provider.id);
     let baseUrl = provider.defaultBaseUrl;
     if (provider.configurableBaseUrl) {
       const enteredBaseUrl = await vscode.window.showInputBox({
@@ -201,14 +209,17 @@ export class ModelProviderService {
           provider.id === "newapi"
             ? "https://newapi.example.com/v1"
             : "https://api.example.com/v1",
-        value: provider.id === current.definition.id ? current.baseUrl : undefined,
+        value: savedBaseUrl || undefined,
         ignoreFocusOut: true,
         validateInput: validateBaseUrlInput,
       });
       if (enteredBaseUrl === undefined) {
         return;
       }
-      baseUrl = normalizeBaseUrl(enteredBaseUrl);
+      baseUrl = normalizeModelBaseUrl(enteredBaseUrl);
+    }
+    if (!baseUrl) {
+      return;
     }
 
     const model = await vscode.window.showInputBox({
@@ -218,10 +229,7 @@ export class ModelProviderService {
           ? "填写火山方舟推理接入点 ID"
           : "填写该厂商或 NewAPI 渠道实际开放的模型名",
       placeHolder: provider.modelPlaceHolder ?? provider.defaultModel,
-      value:
-        provider.id === current.definition.id
-          ? current.model
-          : provider.defaultModel,
+      value: savedModel || provider.defaultModel,
       ignoreFocusOut: true,
       validateInput: (value) => (value.trim() ? undefined : "请输入模型名"),
     });
@@ -229,7 +237,9 @@ export class ModelProviderService {
       return;
     }
 
-    const storedKey = await this.context.secrets.get(secretName(provider.id));
+    const storedKey = await this.context.secrets.get(
+      modelProviderSecretName(provider.id, baseUrl),
+    );
     const enteredKey = await vscode.window.showInputBox({
       title: `${provider.label}：API Key`,
       prompt: storedKey
@@ -249,7 +259,10 @@ export class ModelProviderService {
       return;
     }
 
-    await this.context.secrets.store(secretName(provider.id), apiKey);
+    await this.context.secrets.store(
+      modelProviderSecretName(provider.id, baseUrl),
+      apiKey,
+    );
     await this.saveSelection(provider.id, model.trim(), baseUrl);
     const action = await vscode.window.showInformationMessage(
       `已配置 ${provider.label} · ${model.trim()}。`,
@@ -276,13 +289,22 @@ export class ModelProviderService {
   }
 
   public async clearCurrentApiKey(): Promise<void> {
-    const provider = this.resolveCurrent().definition;
+    const current = this.resolveCurrent();
+    const provider = current.definition;
     if (provider.id === "vscode") {
       void vscode.window.showInformationMessage("VS Code 内置模型不需要 Code Cat API Key。");
       return;
     }
-    await this.context.secrets.delete(secretName(provider.id));
-    void vscode.window.showInformationMessage(`已删除 ${provider.label} 的本地 API Key。`);
+    if (!current.baseUrl) {
+      void vscode.window.showInformationMessage(
+        `${provider.label} 尚未配置 Base URL，因此没有可定位的 API Key。`,
+      );
+      return;
+    }
+    await this.context.secrets.delete(modelProviderSecretName(provider.id, current.baseUrl));
+    void vscode.window.showInformationMessage(
+      `已删除 ${provider.label} 当前 API 地址的本地 Key。`,
+    );
   }
 
   private resolveCurrent(): ResolvedProvider {
@@ -290,8 +312,8 @@ export class ModelProviderService {
     const configuredId = configuration.get<string>("provider", "vscode");
     const id = isProviderId(configuredId) ? configuredId : "vscode";
     const definition = PROVIDERS.find((provider) => provider.id === id) ?? PROVIDERS[0]!;
-    const configuredModel = configuration.get<string>("model", "").trim();
-    const configuredBaseUrl = configuration.get<string>("baseUrl", "").trim();
+    const configuredModel = this.readProviderSetting("models", id);
+    const configuredBaseUrl = this.readProviderSetting("baseUrls", id);
     return {
       definition,
       model: configuredModel || definition.defaultModel,
@@ -307,11 +329,27 @@ export class ModelProviderService {
     baseUrl: string,
   ): Promise<void> {
     const configuration = vscode.workspace.getConfiguration("codeCat.ai");
+    const models = readStringMap(configuration.get<unknown>("models", {}));
+    const baseUrls = readStringMap(configuration.get<unknown>("baseUrls", {}));
+    if (model) {
+      models[provider] = model;
+    }
+    if (baseUrl) {
+      baseUrls[provider] = baseUrl;
+    }
     await Promise.all([
       configuration.update("provider", provider, vscode.ConfigurationTarget.Global),
-      configuration.update("model", model, vscode.ConfigurationTarget.Global),
-      configuration.update("baseUrl", baseUrl, vscode.ConfigurationTarget.Global),
+      configuration.update("models", models, vscode.ConfigurationTarget.Global),
+      configuration.update("baseUrls", baseUrls, vscode.ConfigurationTarget.Global),
     ]);
+  }
+
+  private readProviderSetting(
+    setting: "models" | "baseUrls",
+    provider: ModelProviderId,
+  ): string {
+    const configuration = vscode.workspace.getConfiguration("codeCat.ai");
+    return readStringMap(configuration.get<unknown>(setting, {}))[provider]?.trim() ?? "";
   }
 }
 
@@ -342,39 +380,22 @@ function isProviderId(value: string): value is ModelProviderId {
   return PROVIDER_IDS.has(value as ModelProviderId);
 }
 
-function secretName(provider: ModelProviderId): string {
-  return `codeCat.modelProvider.apiKey.${provider}`;
-}
-
 function validateBaseUrlInput(value: string): string | undefined {
   try {
-    normalizeBaseUrl(value);
+    normalizeModelBaseUrl(value);
     return undefined;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
 }
 
-function normalizeBaseUrl(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    throw new Error("请输入 Base URL");
+function readStringMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    throw new Error("Base URL 格式不正确");
-  }
-  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-    throw new Error("Base URL 不能包含账号、查询参数或片段");
-  }
-  const localHost =
-    parsed.hostname === "localhost" ||
-    parsed.hostname === "127.0.0.1" ||
-    parsed.hostname === "[::1]";
-  if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && localHost)) {
-    throw new Error("为防止 Key 泄露，请使用 HTTPS；本机 localhost 可使用 HTTP");
-  }
-  return parsed.toString().replace(/\/+$/u, "");
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
 }

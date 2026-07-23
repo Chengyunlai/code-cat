@@ -95,10 +95,12 @@ For NewAPI, enter the API root such as `https://newapi.example.com/v1`, not the 
 NewAPI deployment. HTTPS is required except for `localhost` development endpoints.
 
 API keys are stored with VS Code `SecretStorage`; they are not written to the repository,
-workspace settings, user `settings.json`, logs, or model prompts. Code Cat rejects cross-origin
-HTTP redirects for API requests so an authorization header cannot silently follow a redirect.
-The non-secret provider, model, and NewAPI Base URL remain visible under `Code Cat › AI` in
-VS Code Settings. Run **Code Cat: Clear Stored API Key** to delete the current provider's key.
+workspace settings, user `settings.json`, logs, or model prompts. For NewAPI and compatible
+services, each Key is bound to its normalized API root, so changing the Base URL never reuses
+the old endpoint's Key. Code Cat also rejects HTTP redirects so an authorization header cannot
+silently follow one. Non-secret providers, per-provider models, and Base URLs remain visible
+under `Code Cat › AI` in VS Code Settings. Run **Code Cat: Clear Stored API Key** to delete the
+Key for the current provider and API root.
 
 If Code Cat reports `No VS Code language model is available`, either sign in to a provider that
 exposes a model through the VS Code Language Model API, or configure one of the direct API

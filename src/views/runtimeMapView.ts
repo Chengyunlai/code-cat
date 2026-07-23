@@ -113,6 +113,10 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     return this.view.visible;
   }
 
+  public refresh(): void {
+    this.postState();
+  }
+
   private postState(): void {
     if (!this.view) {
       return;

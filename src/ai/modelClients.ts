@@ -12,6 +12,7 @@ export interface HttpModelRequest {
   readonly model: string;
   readonly apiKey: string;
   readonly prompt: string;
+  readonly timeoutMs?: number;
 }
 
 const REQUEST_TIMEOUT_MS = 90_000;
@@ -45,8 +46,10 @@ async function requestOpenAiResponses(
     {
       model: request.model,
       input: request.prompt,
+      store: false,
     },
     token,
+    request.timeoutMs,
   );
   const direct = readString(payload, "output_text");
   if (direct) {
@@ -79,6 +82,7 @@ async function requestOpenAiChat(
       stream: false,
     },
     token,
+    request.timeoutMs,
   );
   const firstChoice = readArray(payload, "choices")[0];
   const message = readObject(firstChoice)?.message;
@@ -103,6 +107,7 @@ async function requestAnthropic(
       messages: [{ role: "user", content: request.prompt }],
     },
     token,
+    request.timeoutMs,
   );
   const text = readArray(payload, "content")
     .flatMap((part) => {
@@ -129,6 +134,7 @@ async function requestGemini(
       generationConfig: { maxOutputTokens: 4096 },
     },
     token,
+    request.timeoutMs,
   );
   const firstCandidate = readArray(payload, "candidates")[0];
   const content = readObject(firstCandidate)?.content;
@@ -146,13 +152,17 @@ async function postJson(
   headers: Readonly<Record<string, string>>,
   body: unknown,
   token: vscode.CancellationToken,
+  requestedTimeoutMs?: number,
 ): Promise<unknown> {
   if (token.isCancellationRequested) {
     throw new vscode.CancellationError();
   }
   const controller = new AbortController();
   const cancellation = token.onCancellationRequested(() => controller.abort());
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs = requestedTimeoutMs
+    ? Math.max(1, Math.floor(requestedTimeoutMs))
+    : REQUEST_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -175,7 +185,7 @@ async function postJson(
       throw new vscode.CancellationError();
     }
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("The model provider request timed out after 90 seconds.");
+      throw new Error(`The model provider request timed out after ${timeoutMs} ms.`);
     }
     throw error;
   } finally {

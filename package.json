@@ -168,17 +168,23 @@
           ],
           "description": "Active model provider. Prefer the Code Cat: Configure Model Provider command; API keys are stored separately in VS Code SecretStorage."
         },
-        "codeCat.ai.model": {
-          "type": "string",
-          "default": "",
+        "codeCat.ai.models": {
+          "type": "object",
+          "default": {},
           "scope": "application",
-          "description": "Model name for the selected API provider. Configure it through Code Cat: Configure Model Provider."
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Model names remembered separately for each API provider. Configure them through Code Cat: Configure Model Provider."
         },
-        "codeCat.ai.baseUrl": {
-          "type": "string",
-          "default": "",
+        "codeCat.ai.baseUrls": {
+          "type": "object",
+          "default": {},
           "scope": "application",
-          "description": "API root URL for NewAPI or another OpenAI-compatible service, usually ending in /v1. API keys are never stored here."
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "API root URLs remembered separately for NewAPI and other compatible services. API keys are never stored here."
         },
         "codeCat.maxIndexedFiles": {
           "type": "number",

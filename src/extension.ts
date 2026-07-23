@@ -90,6 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       await runModelProviderCommand(() => modelProvider.configure());
+      runtimeMap.refresh();
     }),
     vscode.commands.registerCommand("codeCat.testModelProvider", async () => {
       if (!modelConfigurationAvailable(store)) {
@@ -145,6 +146,9 @@ export function activate(context: vscode.ExtensionContext): void {
         await vscode.commands.executeCommand("workbench.view.extension.codeCat");
         return runtimeMap.showForSmoke();
       }),
+      vscode.commands.registerCommand("codeCat.__modelProviderStatus", () =>
+        modelProvider.status(),
+      ),
     );
   }
 }

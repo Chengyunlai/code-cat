@@ -2,6 +2,10 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 const vscode = require("vscode");
 const { requestHttpModel } = require("../../dist/ai/modelClients");
+const {
+  modelProviderSecretName,
+  normalizeModelBaseUrl,
+} = require("../../dist/ai/modelProviderSecurity");
 
 const TIMEOUT_MS = 30_000;
 
@@ -25,11 +29,14 @@ async function run() {
     "codeCat.__startSmokeDebug",
     "codeCat.__smokeState",
     "codeCat.__showSmokeView",
+    "codeCat.__modelProviderStatus",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
 
   await testHttpModelClients();
+  await testProviderSpecificSettings();
+  testModelProviderSecurity();
 
   await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   await vscode.commands.executeCommand("codeCat.runtimeMap.focus");
@@ -157,7 +164,7 @@ async function run() {
     );
     session = undefined;
     console.log(
-      "Code Cat smoke passed: activation, linked breakpoint, debug snapshots, both views, and duplicate-control suppression.",
+      "Code Cat smoke passed: model adapters, activation, linked breakpoint, debug snapshots, both views, and duplicate-control suppression.",
     );
   } finally {
     if (session) {
@@ -183,6 +190,16 @@ async function testHttpModelClients() {
       response.end(
         JSON.stringify({ candidates: [{ content: { parts: [{ text: "gemini-ok" }] } }] }),
       );
+    } else if (request.url === "/redirect/chat/completions") {
+      response.statusCode = 307;
+      response.setHeader("location", "/chat/completions");
+      response.end();
+    } else if (request.url === "/slow/chat/completions") {
+      setTimeout(() => {
+        if (!response.destroyed) {
+          response.end(JSON.stringify({ choices: [{ message: { content: "late" } }] }));
+        }
+      }, 200);
     } else {
       response.statusCode = 404;
       response.end(JSON.stringify({ error: { message: "unexpected smoke path" } }));
@@ -219,15 +236,110 @@ async function testHttpModelClients() {
     );
     assert.equal(requests.length, 4);
     assert.equal(requests[0].headers.authorization, "Bearer smoke-secret");
+    assert.equal(requests[0].body.store, false);
     assert.equal(requests[1].body.messages[0].content, "ping");
     assert.equal(requests[2].headers["x-api-key"], "smoke-secret");
     assert.equal(requests[2].headers["anthropic-version"], "2023-06-01");
     assert.equal(requests[3].headers["x-goog-api-key"], "smoke-secret");
     assert.equal(requests[3].body.contents[0].parts[0].text, "ping");
+
+    await assert.rejects(
+      requestHttpModel(
+        { ...common, baseUrl: `${baseUrl}/redirect`, transport: "openai-chat" },
+        cancellation.token,
+      ),
+    );
+    assert.deepEqual(
+      requests.slice(4).map((request) => request.url),
+      ["/redirect/chat/completions"],
+      "redirects must not receive a second request carrying the authorization header",
+    );
+
+    await assert.rejects(
+      requestHttpModel(
+        {
+          ...common,
+          baseUrl: `${baseUrl}/slow`,
+          transport: "openai-chat",
+          timeoutMs: 10,
+        },
+        cancellation.token,
+      ),
+      /timed out/u,
+    );
+
+    const cancelled = new vscode.CancellationTokenSource();
+    try {
+      const pending = requestHttpModel(
+        { ...common, baseUrl: `${baseUrl}/slow`, transport: "openai-chat" },
+        cancelled.token,
+      );
+      setTimeout(() => cancelled.cancel(), 10);
+      await assert.rejects(
+        pending,
+        (error) => error instanceof vscode.CancellationError,
+      );
+    } finally {
+      cancelled.dispose();
+    }
   } finally {
     cancellation.dispose();
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+async function testProviderSpecificSettings() {
+  const configuration = vscode.workspace.getConfiguration("codeCat.ai");
+  const previousProvider = configuration.inspect("provider")?.globalValue;
+  const previousModels = configuration.inspect("models")?.globalValue;
+  const previousBaseUrls = configuration.inspect("baseUrls")?.globalValue;
+  try {
+    await configuration.update(
+      "models",
+      { openai: "openai-smoke", anthropic: "anthropic-smoke" },
+      vscode.ConfigurationTarget.Global,
+    );
+    await configuration.update(
+      "baseUrls",
+      { newapi: "https://newapi.example.com/v1" },
+      vscode.ConfigurationTarget.Global,
+    );
+    await configuration.update("provider", "openai", vscode.ConfigurationTarget.Global);
+    assert.deepEqual(
+      await vscode.commands.executeCommand("codeCat.__modelProviderStatus"),
+      { id: "openai", label: "OpenAI", detail: "openai-smoke" },
+    );
+    await configuration.update("provider", "anthropic", vscode.ConfigurationTarget.Global);
+    assert.deepEqual(
+      await vscode.commands.executeCommand("codeCat.__modelProviderStatus"),
+      { id: "anthropic", label: "Anthropic Claude", detail: "anthropic-smoke" },
+    );
+  } finally {
+    await configuration.update("provider", previousProvider, vscode.ConfigurationTarget.Global);
+    await configuration.update("models", previousModels, vscode.ConfigurationTarget.Global);
+    await configuration.update("baseUrls", previousBaseUrls, vscode.ConfigurationTarget.Global);
+  }
+}
+
+function testModelProviderSecurity() {
+  assert.equal(
+    normalizeModelBaseUrl("https://newapi.example.com/v1/"),
+    "https://newapi.example.com/v1",
+  );
+  assert.throws(
+    () => normalizeModelBaseUrl("https://newapi.example.com/v1/chat/completions"),
+    /API 根地址/u,
+  );
+  assert.throws(() => normalizeModelBaseUrl("http://newapi.example.com/v1"), /HTTPS/u);
+  assert.equal(
+    modelProviderSecretName("newapi", "https://newapi.example.com/v1/"),
+    modelProviderSecretName("newapi", "https://newapi.example.com/v1"),
+  );
+  assert.notEqual(
+    modelProviderSecretName("newapi", "https://first.example.com/v1"),
+    modelProviderSecretName("newapi", "https://second.example.com/v1"),
+    "different API roots must not share a SecretStorage key",
+  );
 }
 
 function readRequestBody(request) {
