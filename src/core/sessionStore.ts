@@ -24,6 +24,11 @@ export class SessionStore implements vscode.Disposable {
   public setRoute(route: RoutePlan): void {
     this.update({
       ...this.state,
+      chatMessages: appendChatExchange(
+        this.state.chatMessages,
+        route.question,
+        route.summary,
+      ),
       route,
       pauses: [],
       selectedPauseId: undefined,
@@ -35,6 +40,7 @@ export class SessionStore implements vscode.Disposable {
         kind: "route",
         markdown: route.summary,
       },
+      contentMode: "route",
     });
   }
 
@@ -129,18 +135,11 @@ export class SessionStore implements vscode.Disposable {
   }
 
   public addChatExchange(question: string, answer: string): void {
-    const messages: ChatMessage[] = [
-      { id: randomUUID(), role: "user", text: question },
-      { id: randomUUID(), role: "assistant", text: answer },
-    ];
     this.update({
       ...this.state,
-      chatMessages: [...this.state.chatMessages, ...messages].slice(-MAX_CHAT_MESSAGES),
-      tutorMessage: {
-        id: randomUUID(),
-        kind: "chat",
-        markdown: answer,
-      },
+      chatMessages: appendChatExchange(this.state.chatMessages, question, answer),
+      tutorMessage: undefined,
+      contentMode: "chat",
       busyMessage: undefined,
     });
   }
@@ -168,7 +167,7 @@ export class SessionStore implements vscode.Disposable {
     if (this.state.requestKind) {
       return false;
     }
-    this.update({ pauses: [], chatMessages: [], debugStatus: "idle" });
+    this.update({ pauses: [], chatMessages: [], debugStatus: "idle", contentMode: undefined });
     return true;
   }
 
@@ -180,4 +179,16 @@ export class SessionStore implements vscode.Disposable {
     this.state = next;
     this.changeEmitter.fire(next);
   }
+}
+
+function appendChatExchange(
+  current: readonly ChatMessage[],
+  question: string,
+  answer: string,
+): readonly ChatMessage[] {
+  return [
+    ...current,
+    { id: randomUUID(), role: "user" as const, text: question },
+    { id: randomUUID(), role: "assistant" as const, text: answer },
+  ].slice(-MAX_CHAT_MESSAGES);
 }

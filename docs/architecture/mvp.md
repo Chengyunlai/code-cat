@@ -6,6 +6,12 @@ The first product is a Python-only VS Code extension. Its job is to help a devel
 
 It is not a general code-generation agent and it does not own the debugger. It composes VS Code, the installed Python extension, debugpy, the Language Model API, and a linked visualization.
 
+The shared composer supports two project-aware outcomes. Normal conversation remains in the
+overview as a lightweight chat history; questions about where or how code executes produce a
+validated route. Both outcomes share recent conversation context, while route nodes still must
+resolve to files in the open Python workspace. Without an open workspace, the composer presents
+an explicit project-opening action and does not call the model.
+
 ## Core flow
 
 ```mermaid

@@ -44,7 +44,7 @@ export interface RoutePlan {
 
 export interface TutorMessage {
   readonly id: string;
-  readonly kind: "route" | "pause" | "chat" | "system" | "error";
+  readonly kind: "route" | "pause" | "system" | "error";
   readonly markdown: string;
   readonly pauseId?: string;
 }
@@ -64,8 +64,9 @@ export interface SessionState {
   readonly selectedPauseId?: string;
   readonly selectedFrameId?: number;
   readonly tutorMessage?: TutorMessage;
+  readonly contentMode?: "chat" | "route";
   readonly busyMessage?: string;
-  readonly requestKind?: "route" | "pause" | "debug" | "control" | "model";
+  readonly requestKind?: "question" | "pause" | "debug" | "control" | "model";
 }
 
 export interface DapStackFrame {

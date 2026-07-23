@@ -199,6 +199,28 @@ function testConversationState() {
         { role: "assistant", text: "你好！想聊聊什么？" },
       ],
     );
+    assert.equal(store.snapshot().contentMode, "chat");
+    store.setRoute({
+      question: "结账请求经过哪些函数？",
+      summary: "结账从入口进入库存与支付流程。",
+      nodes: [
+        {
+          id: "route-node",
+          title: "Checkout",
+          location: { path: "/tmp/checkout.py", line: 1, column: 1 },
+          reason: "Entry point",
+          confidence: "high",
+        },
+      ],
+    });
+    assert.deepEqual(
+      store.snapshot().chatMessages.slice(-2).map(({ role, text }) => ({ role, text })),
+      [
+        { role: "user", text: "结账请求经过哪些函数？" },
+        { role: "assistant", text: "结账从入口进入库存与支付流程。" },
+      ],
+    );
+    assert.equal(store.snapshot().contentMode, "route");
   } finally {
     store.dispose();
   }

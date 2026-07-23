@@ -37,6 +37,7 @@ export const runtimeMapScript = String.raw`
       debugging: false,
       workspaceOpen: true,
       chatMessages: [],
+      contentMode: undefined,
     };
 
     document.getElementById('locate').addEventListener('click', submitQuestion);
@@ -109,17 +110,13 @@ export const runtimeMapScript = String.raw`
       const livePause = selectedPauseIsLive(state);
       elements.composerMode.textContent = !state.workspaceOpen
         ? '需要打开 Python 项目'
-        : paused
-        ? livePause ? '基于当前暂停追问' : '分析历史暂停快照'
         : route || chatMessages.length ? '继续聊天或询问代码路径' : '聊天或询问代码路径';
       elements.question.placeholder = !state.workspaceOpen
         ? '打开项目后即可定位代码路径'
-        : paused
-        ? livePause ? '为什么停在这里？' : '这个历史暂停说明了什么？'
         : route
           ? '继续聊天，或输入新的代码问题'
           : '输入消息，或询问项目代码';
-      const sendLabel = paused ? (livePause ? '解释当前暂停' : '解释历史快照') : '定位代码路径';
+      const sendLabel = '发送消息';
       elements.send.title = sendLabel;
       elements.send.setAttribute('aria-label', sendLabel);
       elements.question.disabled = requestPending || !state.workspaceOpen;
@@ -140,11 +137,7 @@ export const runtimeMapScript = String.raw`
         elements.question.focus();
         return;
       }
-      if (currentState.debugStatus === 'paused' && (currentState.frames || []).length) {
-        vscode.postMessage({ type: 'explain', question });
-      } else {
-        vscode.postMessage({ type: 'locateRoute', question });
-      }
+      vscode.postMessage({ type: 'askQuestion', question });
       beginLocalRequest();
       elements.question.value = '';
       resizeQuestion();
@@ -200,7 +193,7 @@ export const runtimeMapScript = String.raw`
             : '请求处理中…');
       } else if (!state.workspaceOpen) {
         elements.statusLabel.textContent = '未打开 Python 项目';
-      } else if (state.tutorMessage?.kind === 'chat') {
+      } else if (state.contentMode === 'chat') {
         elements.statusDot.classList.add('primary');
         elements.statusLabel.textContent = '对话已更新';
       } else if (state.debugStatus === 'ended') {
@@ -270,8 +263,8 @@ export const runtimeMapScript = String.raw`
       const route = state.route;
       const pauses = state.pauses || [];
       const frames = state.frames || [];
-      if (state.tutorMessage?.kind === 'chat' && (state.chatMessages || []).length) {
-        renderConversation(root, state.chatMessages);
+      if (state.contentMode === 'chat' && (state.chatMessages || []).length) {
+        renderConversation(root, state.chatMessages, state);
       } else if (state.debugStatus === 'ended') {
         renderSessionEnded(root, state);
       } else if (state.debugStatus === 'paused' && frames.length) {
@@ -285,7 +278,7 @@ export const runtimeMapScript = String.raw`
       }
     }
 
-    function renderConversation(root, messages) {
+    function renderConversation(root, messages, state) {
       const conversation = document.createElement('section');
       conversation.className = 'conversation';
       messages.forEach((message) => {
@@ -300,6 +293,9 @@ export const runtimeMapScript = String.raw`
         turn.append(role, body);
         conversation.appendChild(turn);
       });
+      if (state.debugStatus === 'paused' && (state.frames || []).length) {
+        appendDebugActions(conversation, state);
+      }
       root.appendChild(conversation);
     }
 

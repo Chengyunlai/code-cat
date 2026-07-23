@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const actions: RuntimeMapActions = {
     askQuestion: (question) =>
-      actionCoordinator.run("route", () => answerQuestion(store, tutor, question)),
+      actionCoordinator.run("question", () => answerQuestion(store, tutor, question)),
     startGuidedDebug: (question) =>
       actionCoordinator.run("debug", () =>
         startGuidedDebug(store, tutor, observer, question),

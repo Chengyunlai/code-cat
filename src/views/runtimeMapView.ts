@@ -203,6 +203,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         debugging: Boolean(state.debugSessionId),
         workspaceOpen: Boolean(vscode.workspace.workspaceFolders?.length),
         chatMessages: state.chatMessages,
+        contentMode: state.contentMode,
       },
     });
   }
@@ -229,7 +230,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       case "scriptError":
         this.scriptError = typeof value.error === "string" ? value.error : "unknown script error";
         return;
-      case "locateRoute":
+      case "askQuestion":
         if (typeof value.question === "string" && value.question.trim()) {
           await this.actions.askQuestion(value.question.trim());
         }

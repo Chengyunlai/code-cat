@@ -14,20 +14,23 @@ interface ModelRouteNode {
 }
 
 interface ModelRoutePlan {
-  readonly kind?: unknown;
-  readonly message?: unknown;
   readonly summary?: unknown;
   readonly nodes?: unknown;
+}
+
+interface ModelQuestionResponse extends ModelRoutePlan {
+  readonly kind?: unknown;
+  readonly message?: unknown;
 }
 
 export type TutorQuestionResult =
   | { readonly kind: "chat"; readonly answer: string }
   | { readonly kind: "route"; readonly route: RoutePlan };
 
-export type TutorGuidanceCode =
-  | "no-workspace"
-  | "no-python-files"
-  | "ask-code-question";
+export type TutorGuidanceCode = "no-workspace" | "no-python-files";
+
+const ROUTE_NODE_SCHEMA =
+  '{"title":"...","symbol":"...","file":"relative/path.py","line":1,"reason":"...","confidence":"high|medium|low"}';
 
 export class TutorGuidanceError extends Error {
   public constructor(
@@ -63,9 +66,8 @@ export class AiTutor {
         "For greetings, thanks, general conversation, or product usage questions, return:",
         '{"kind":"chat","message":"your answer"}',
         "For questions about where or how behavior executes in this project, return:",
-        '{"kind":"route","summary":"...","nodes":[{"title":"...","symbol":"...","file":"relative/path.py","line":1,"reason":"...","confidence":"high|medium|low"}]}',
-        "Use only files and symbols present in the supplied project index for route nodes.",
-        "Prefer 2-8 high-value route stops, but return one stop when the project is small.",
+        `{"kind":"route","summary":"...","nodes":[${ROUTE_NODE_SCHEMA}]}`,
+        ...routeInstructions(),
         "Answer in the user's language. Return JSON only, without Markdown fences.",
         "Do not invent project facts that are absent from the index.",
         "",
@@ -76,11 +78,11 @@ export class AiTutor {
       ].join("\n"),
       token,
     );
-    let parsed: ModelRoutePlan;
+    let parsed: ModelQuestionResponse;
     try {
-      parsed = JSON.parse(stripCodeFence(response)) as ModelRoutePlan;
+      parsed = JSON.parse(stripCodeFence(response)) as ModelQuestionResponse;
     } catch {
-      if (isGreetingOnly(question) && response.trim()) {
+      if (response.trim()) {
         return { kind: "chat", answer: response.trim() };
       }
       throw new Error(
@@ -105,11 +107,10 @@ export class AiTutor {
     const response = await this.request(
       [
         "You are a senior Python engineer planning a guided code-reading session.",
-        "Use only files and symbols present in the supplied project index.",
         "Infer the most likely end-to-end path related to the user's question.",
-        "Prefer 3-8 high-value stops: entry boundary, orchestration, domain decision, I/O, and result.",
         "Return JSON only with this shape:",
-        '{"summary":"...","nodes":[{"title":"...","symbol":"...","file":"relative/path.py","line":1,"reason":"...","confidence":"high|medium|low"}]}',
+        `{"summary":"...","nodes":[${ROUTE_NODE_SCHEMA}]}`,
+        ...routeInstructions(),
         "Do not wrap JSON in Markdown fences.",
         "",
         `User question: ${question}`,
@@ -247,10 +248,10 @@ function stripCodeFence(value: string): string {
     .trim();
 }
 
-function isGreetingOnly(value: string): boolean {
-  const normalized = value
-    .trim()
-    .toLocaleLowerCase()
-    .replace(/[\s!！?？。，,.、~～]+/gu, "");
-  return /^(你好|您好|嗨|哈喽|hello|hi|hey|在吗|测试|test)$/u.test(normalized);
+function routeInstructions(): readonly string[] {
+  return [
+    "Use only files and symbols present in the supplied project index for route nodes.",
+    "Prefer 2-8 high-value stops: entry boundary, orchestration, domain decision, I/O, and result.",
+    "Return one stop when the project is small.",
+  ];
 }
