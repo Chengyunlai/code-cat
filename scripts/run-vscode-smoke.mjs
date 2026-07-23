@@ -18,11 +18,13 @@ if (!vscodeExecutablePath) {
 }
 await access(vscodeExecutablePath);
 
-const machineExtensions = path.join(homedir(), ".vscode", "extensions");
-const isolatedExtensions = path.join(root, ".vscode-test", "code-cat-extensions");
-const extensionsDir =
+const machineExtensions =
+  process.env.CODE_CAT_VSCODE_EXTENSIONS_SOURCE_DIR ??
+  path.join(homedir(), ".vscode", "extensions");
+const isolatedExtensions =
   process.env.CODE_CAT_VSCODE_EXTENSIONS_DIR ??
-  (await preparePythonExtensions(machineExtensions, isolatedExtensions));
+  path.join(root, ".vscode-test", "code-cat-extensions");
+const extensionsDir = await preparePythonExtensions(machineExtensions, isolatedExtensions);
 const launchArgs = [
   path.join(root, "examples/python-order-service"),
   `--extensions-dir=${extensionsDir}`,
