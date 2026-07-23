@@ -11,6 +11,7 @@ import {
   discoverPythonProjectScripts,
   projectScriptDebugConfiguration,
   PythonProjectScript,
+  selectedPythonInterpreterPath,
 } from "./debug/pythonLaunchTargets";
 import { RoutePlan, SourceLocation } from "./domain/model";
 import { PythonProjectIndex } from "./project/pythonProjectIndex";
@@ -444,10 +445,18 @@ async function launchGuidedDebugSession(
     if (!projectScript) {
       return;
     }
+    const python = await selectedPythonInterpreterPath(folder);
+    if (!python) {
+      void vscode.window.showInformationMessage(
+        "Select a Python interpreter for this workspace before starting its project entry point.",
+      );
+      await vscode.commands.executeCommand("python.setInterpreter");
+      return;
+    }
     const started = await startObservedDebugSession(
       observer,
       folder,
-      projectScriptDebugConfiguration(folder, extensionUri, projectScript),
+      projectScriptDebugConfiguration(folder, extensionUri, projectScript, python),
     );
     if (!started) {
       void vscode.window.showErrorMessage(

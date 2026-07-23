@@ -3,6 +3,7 @@ const vscode = require("vscode");
 const {
   parseProjectScripts,
   projectScriptDebugConfiguration,
+  selectedPythonInterpreterPath,
 } = require("../../dist/debug/pythonLaunchTargets");
 
 const TIMEOUT_MS = 30_000;
@@ -16,6 +17,8 @@ async function run() {
 
   const folder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(folder, "the console-entrypoint fixture should be open");
+  const selectedPython = await selectedPythonInterpreterPath(folder);
+  assert.ok(selectedPython, "Code Cat should resolve the workspace's selected Python interpreter");
   const cliUri = vscode.Uri.joinPath(folder.uri, "cli.py");
   const targetUri = vscode.Uri.joinPath(folder.uri, "target.py");
   const targetDocument = await vscode.workspace.openTextDocument(targetUri);
@@ -111,11 +114,16 @@ empty = "sample.cli:"
     uri: vscode.Uri.file("/workspace/sample"),
   };
   const extensionUri = vscode.Uri.file("/extensions/code-cat");
-  const configuration = projectScriptDebugConfiguration(folder, extensionUri, {
-    name: "sample-cli",
-    module: "sample.cli",
-    callable: "main",
-  });
+  const configuration = projectScriptDebugConfiguration(
+    folder,
+    extensionUri,
+    {
+      name: "sample-cli",
+      module: "sample.cli",
+      callable: "main",
+    },
+    "/workspace/sample/.venv/bin/python",
+  );
   assert.equal(
     configuration.program,
     "/extensions/code-cat/resources/python_project_script_launcher.py",
@@ -128,6 +136,7 @@ empty = "sample.cli:"
   ]);
   assert.equal(configuration.code, undefined);
   assert.equal(configuration.justMyCode, false);
+  assert.equal(configuration.python, "/workspace/sample/.venv/bin/python");
 }
 
 module.exports = { run };

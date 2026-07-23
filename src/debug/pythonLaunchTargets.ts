@@ -6,6 +6,15 @@ export interface PythonProjectScript {
   readonly callable: string;
 }
 
+interface PythonExtensionApi {
+  readonly ready?: Promise<void>;
+  readonly environments?: {
+    getActiveEnvironmentPath(resource?: vscode.Uri):
+      | { readonly path?: unknown }
+      | undefined;
+  };
+}
+
 const PYTHON_REFERENCE = /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*$/u;
 const MAX_PYPROJECT_BYTES = 512 * 1_024;
 
@@ -29,6 +38,7 @@ export function projectScriptDebugConfiguration(
   folder: vscode.WorkspaceFolder,
   extensionUri: vscode.Uri,
   script: PythonProjectScript,
+  python: string,
 ): vscode.DebugConfiguration {
   return {
     name: `Code Cat: ${script.name}`,
@@ -43,7 +53,27 @@ export function projectScriptDebugConfiguration(
     cwd: folder.uri.fsPath,
     console: "integratedTerminal",
     justMyCode: false,
+    python,
   };
+}
+
+export async function selectedPythonInterpreterPath(
+  folder: vscode.WorkspaceFolder,
+): Promise<string | undefined> {
+  const extension = vscode.extensions.getExtension<PythonExtensionApi>("ms-python.python");
+  if (!extension) {
+    return undefined;
+  }
+  try {
+    const api = await extension.activate();
+    await api.ready;
+    const selected = api.environments?.getActiveEnvironmentPath(folder.uri)?.path;
+    return typeof selected === "string" && selected.trim() ? selected : undefined;
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    console.warn(`Code Cat could not resolve the selected Python interpreter: ${details}`);
+    return undefined;
+  }
 }
 
 export function parseProjectScripts(source: string): readonly PythonProjectScript[] {

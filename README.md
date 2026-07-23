@@ -20,7 +20,8 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 ### Prerequisites
 
 - VS Code 1.105 or newer.
-- Python 3 installed and available to VS Code.
+- Python 3.9 or newer installed and available to VS Code; the opened project may require a
+  newer version.
 - Either a model exposed through the VS Code Language Model API, or an API key for one of the providers listed below.
 - Node.js 22 or newer only when building Code Cat from source.
 
@@ -130,6 +131,13 @@ point. Code Cat detects and invokes that callable under debugpy using the interp
 **Python: Select Interpreter**. Add a `.vscode/launch.json` configuration when the application
 requires command-line arguments, special environment variables, a framework-specific launcher,
 or another custom startup sequence; that configuration always takes priority.
+
+Code Cat explicitly binds an automatically discovered project script to the interpreter selected
+for that workspace. This matters because its small console-script launcher is installed with the
+extension rather than stored inside the project; allowing debugpy to infer an interpreter from the
+launcher path can accidentally select a global Python instead of the project's environment. If
+the debugger still asks to change Python, run **Python: Select Interpreter**, choose the project
+environment, and start guided debug again.
 
 ### 5. Source-line teaching controls
 
