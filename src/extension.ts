@@ -20,7 +20,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const actions: RuntimeMapActions = {
     locateRoute: (question) => locateRoute(store, tutor, question),
     startGuidedDebug: (question) => startGuidedDebug(store, tutor, observer, question),
-    explainPause: () => explainCurrentPause(store, tutor),
+    explainPause: (question) => explainCurrentPause(store, tutor, question),
     revealLocation: async (location, frameId) => {
       if (frameId !== undefined) {
         store.selectFrame(frameId);
@@ -135,7 +135,11 @@ async function locateRoute(
   }
 }
 
-async function explainCurrentPause(store: SessionStore, tutor: AiTutor): Promise<void> {
+async function explainCurrentPause(
+  store: SessionStore,
+  tutor: AiTutor,
+  suppliedQuestion?: string,
+): Promise<void> {
   const state = store.snapshot();
   const pause = store.selectedPause();
   if (!pause) {
@@ -153,7 +157,8 @@ async function explainCurrentPause(store: SessionStore, tutor: AiTutor): Promise
         title: "Code Cat is explaining the current pause",
         cancellable: true,
       },
-      async (_progress, token) => tutor.explainPause(state.route?.question, pause, token),
+      async (_progress, token) =>
+        tutor.explainPause(suppliedQuestion?.trim() || state.route?.question, pause, token),
     );
     store.setTutorMessage(message);
   } catch (error) {
