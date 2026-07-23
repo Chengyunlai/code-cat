@@ -20,7 +20,6 @@ export function toVscodeLocation(location: SourceLocation): vscode.Location {
     ),
   );
 }
-
 export async function revealLocation(location: SourceLocation): Promise<void> {
   const document = await vscode.workspace.openTextDocument(location.path);
   const editor = await vscode.window.showTextDocument(document, {
@@ -37,4 +36,3 @@ export async function revealLocation(location: SourceLocation): Promise<void> {
     vscode.TextEditorRevealType.InCenterIfOutsideViewport,
   );
 }
-

@@ -27,4 +27,3 @@ def checkout(request: CheckoutRequest) -> CheckoutResult:
         status="confirmed",
         payment_id=payment_id,
     )
-

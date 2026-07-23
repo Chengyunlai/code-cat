@@ -14,4 +14,3 @@ def handle_checkout() -> None:
 
 if __name__ == "__main__":
     handle_checkout()
-

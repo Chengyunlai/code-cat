@@ -25,4 +25,3 @@ def reserve_inventory(sku: str, quantity: int) -> Reservation:
         quantity=quantity,
         total_cents=item["unit_price_cents"] * quantity,
     )
-

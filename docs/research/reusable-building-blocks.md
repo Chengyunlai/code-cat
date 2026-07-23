@@ -1,6 +1,6 @@
 # Code Cat 可复用能力调研：Python × VS Code × AI Debug
 
-> 调研日期：2026-07-23  
+> 调研日期：2026-07-23
 > 范围：只考虑 Python 项目、VS Code Extension、可公开使用的稳定 API 和可审计的开源组件。优先引用官方文档、协议和源码仓库。
 
 ## 结论先行
