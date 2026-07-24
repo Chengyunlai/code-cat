@@ -110,6 +110,17 @@ export const runtimeMapScript = String.raw`
             userMessageCount: elements.content.querySelectorAll('.chat-turn.user').length,
             assistantMessageCount: elements.content.querySelectorAll('.chat-turn.assistant').length,
             thinkingIndicatorCount: elements.content.querySelectorAll('.thinking-indicator').length,
+            thinkingLabelText:
+              elements.content.querySelector('.thinking-label')?.textContent || '',
+            thinkingDotCount: elements.content.querySelectorAll('.thinking-dot').length,
+            thinkingBackgroundImage: computedStyleValue(
+              '.thinking-label',
+              'backgroundImage',
+            ),
+            thinkingAnimationName: computedStyleValue(
+              '.thinking-label',
+              'animationName',
+            ),
             answerSkeletonCount: elements.content.querySelectorAll('.skeleton').length,
             chatRoleLabelCount: elements.content.querySelectorAll('.chat-role').length,
             richTextElementCount: elements.content.querySelectorAll('.chat-body code, .chat-body strong').length,
@@ -288,7 +299,7 @@ export const runtimeMapScript = String.raw`
         contentMode: 'chat',
         requestPending: true,
         requestKind: 'question',
-        busyMessage: '正在理解你的问题…',
+        busyMessage: '正在思考',
       };
       render(currentState);
       revealLatestConversationItem();
@@ -411,13 +422,10 @@ export const runtimeMapScript = String.raw`
         indicator.className = 'thinking-indicator';
         indicator.setAttribute('role', 'status');
         indicator.setAttribute('aria-live', 'polite');
-        const dot = document.createElement('span');
-        dot.className = 'thinking-dot';
-        dot.setAttribute('aria-hidden', 'true');
         const label = document.createElement('span');
         label.className = 'thinking-label';
-        label.textContent = message || '正在理解你的问题…';
-        indicator.append(dot, label);
+        label.textContent = '正在思考';
+        indicator.appendChild(label);
         root.appendChild(indicator);
         return;
       }

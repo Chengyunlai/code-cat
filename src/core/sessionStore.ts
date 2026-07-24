@@ -227,7 +227,7 @@ export class SessionStore implements vscode.Disposable {
       chatMessages: appendChatMessage(this.state.chatMessages, "user", question),
       tutorMessage: undefined,
       contentMode: "chat",
-      busyMessage: "正在理解你的问题…",
+      busyMessage: "正在思考",
       requestKind: "question",
     });
     return priorMessages;

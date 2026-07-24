@@ -49,6 +49,10 @@ interface RenderedDiagnostics {
   readonly userMessageCount: number;
   readonly assistantMessageCount: number;
   readonly thinkingIndicatorCount: number;
+  readonly thinkingLabelText: string;
+  readonly thinkingDotCount: number;
+  readonly thinkingBackgroundImage: string;
+  readonly thinkingAnimationName: string;
   readonly answerSkeletonCount: number;
   readonly chatRoleLabelCount: number;
   readonly richTextElementCount: number;
@@ -150,6 +154,10 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedUserMessageCount: number;
     readonly renderedAssistantMessageCount: number;
     readonly renderedThinkingIndicatorCount: number;
+    readonly renderedThinkingLabelText: string;
+    readonly renderedThinkingDotCount: number;
+    readonly renderedThinkingBackgroundImage: string;
+    readonly renderedThinkingAnimationName: string;
     readonly renderedAnswerSkeletonCount: number;
     readonly renderedChatRoleLabelCount: number;
     readonly renderedRichTextElementCount: number;
@@ -189,6 +197,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedAssistantMessageCount: this.renderedDiagnostics.assistantMessageCount,
       renderedThinkingIndicatorCount:
         this.renderedDiagnostics.thinkingIndicatorCount,
+      renderedThinkingLabelText: this.renderedDiagnostics.thinkingLabelText,
+      renderedThinkingDotCount: this.renderedDiagnostics.thinkingDotCount,
+      renderedThinkingBackgroundImage:
+        this.renderedDiagnostics.thinkingBackgroundImage,
+      renderedThinkingAnimationName:
+        this.renderedDiagnostics.thinkingAnimationName,
       renderedAnswerSkeletonCount: this.renderedDiagnostics.answerSkeletonCount,
       renderedChatRoleLabelCount: this.renderedDiagnostics.chatRoleLabelCount,
       renderedRichTextElementCount: this.renderedDiagnostics.richTextElementCount,
@@ -495,6 +509,10 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     userMessageCount: 0,
     assistantMessageCount: 0,
     thinkingIndicatorCount: 0,
+    thinkingLabelText: "",
+    thinkingDotCount: 0,
+    thinkingBackgroundImage: "",
+    thinkingAnimationName: "",
     answerSkeletonCount: 0,
     chatRoleLabelCount: 0,
     richTextElementCount: 0,
@@ -528,6 +546,10 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
     userMessageCount: numberDiagnostic(diagnostics.userMessageCount),
     assistantMessageCount: numberDiagnostic(diagnostics.assistantMessageCount),
     thinkingIndicatorCount: numberDiagnostic(diagnostics.thinkingIndicatorCount),
+    thinkingLabelText: stringDiagnostic(diagnostics.thinkingLabelText),
+    thinkingDotCount: numberDiagnostic(diagnostics.thinkingDotCount),
+    thinkingBackgroundImage: stringDiagnostic(diagnostics.thinkingBackgroundImage),
+    thinkingAnimationName: stringDiagnostic(diagnostics.thinkingAnimationName),
     answerSkeletonCount: numberDiagnostic(diagnostics.answerSkeletonCount),
     chatRoleLabelCount: numberDiagnostic(diagnostics.chatRoleLabelCount),
     richTextElementCount: numberDiagnostic(diagnostics.richTextElementCount),

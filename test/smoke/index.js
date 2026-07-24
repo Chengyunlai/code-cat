@@ -97,6 +97,10 @@ async function run() {
       state.runtimeMap?.renderedUserMessageCount === 1 &&
       state.runtimeMap.renderedAssistantMessageCount === 0 &&
       state.runtimeMap.renderedThinkingIndicatorCount === 1 &&
+      state.runtimeMap.renderedThinkingLabelText === "正在思考" &&
+      state.runtimeMap.renderedThinkingDotCount === 0 &&
+      state.runtimeMap.renderedThinkingBackgroundImage.includes("linear-gradient") &&
+      state.runtimeMap.renderedThinkingAnimationName === "thinking-shimmer" &&
       state.runtimeMap.renderedAnswerSkeletonCount === 0 &&
       state.runtimeMap.lastReceivedVersion === state.runtimeMap.stateVersion,
     "the Runtime Map to show the submitted message and a separate thinking state",
@@ -105,6 +109,26 @@ async function run() {
     pendingQuestionState.runtimeMap.renderedThinkingIndicatorCount,
     1,
     "a pending question must render one independent thinking indicator",
+  );
+  assert.equal(
+    pendingQuestionState.runtimeMap.renderedThinkingLabelText,
+    "正在思考",
+    "thinking must use one concise, stable label",
+  );
+  assert.equal(
+    pendingQuestionState.runtimeMap.renderedThinkingDotCount,
+    0,
+    "the text shimmer must replace the previous pulsing dot",
+  );
+  assert.match(
+    pendingQuestionState.runtimeMap.renderedThinkingBackgroundImage,
+    /linear-gradient/u,
+    "the thinking label must render its loading gradient",
+  );
+  assert.equal(
+    pendingQuestionState.runtimeMap.renderedThinkingAnimationName,
+    "thinking-shimmer",
+    "the thinking label must animate the gradient across the text",
   );
   assert.equal(
     pendingQuestionState.runtimeMap.renderedAnswerSkeletonCount,

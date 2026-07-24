@@ -227,25 +227,31 @@ export const runtimeMapStyles = String.raw`
     .thinking-indicator {
       display: flex;
       align-items: center;
-      gap: 8px;
       min-height: 28px;
       width: fit-content;
-      color: var(--cc-muted);
       font-size: 12px;
     }
     .conversation + .thinking-indicator { margin-top: -12px; }
-    .thinking-dot {
-      flex: 0 0 auto;
-      width: 7px;
-      height: 7px;
-      background: var(--cc-ink);
-      border-radius: 50%;
-      animation: thinking-pulse 900ms var(--cc-ease-in-out) infinite alternate;
+    .thinking-label {
+      color: transparent;
+      background-image: linear-gradient(
+        90deg,
+        var(--cc-muted) 0%,
+        var(--cc-muted) 34%,
+        var(--cc-ink) 50%,
+        var(--cc-muted) 66%,
+        var(--cc-muted) 100%
+      );
+      background-position: 200% 50%;
+      background-size: 200% 100%;
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-wrap: pretty;
+      animation: thinking-shimmer 1.6s linear infinite;
     }
-    .thinking-label { text-wrap: pretty; }
-    @keyframes thinking-pulse {
-      from { opacity: .32; }
-      to { opacity: 1; }
+    @keyframes thinking-shimmer {
+      to { background-position: -200% 50%; }
     }
     .exploration-context {
       display: flex;
@@ -487,6 +493,11 @@ export const runtimeMapStyles = String.raw`
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
-      .thinking-dot { animation: none; opacity: .72; }
+      .thinking-label {
+        color: var(--cc-muted);
+        background: none;
+        -webkit-text-fill-color: currentColor;
+        animation: none;
+      }
     }
 `;
