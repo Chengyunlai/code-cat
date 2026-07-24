@@ -255,6 +255,12 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("codeCat.__runComposerSmoke", () =>
         runtimeMap.runComposerSmoke(),
       ),
+      vscode.commands.registerCommand("codeCat.__runDebugInviteSmoke", () =>
+        runtimeMap.runDebugInviteSmoke(),
+      ),
+      vscode.commands.registerCommand("codeCat.__runCoreLocationSmoke", () =>
+        runtimeMap.runCoreLocationSmoke(),
+      ),
       vscode.commands.registerCommand(
         "codeCat.__showSmokeTab",
         (tab: "overview" | "path" | "stack" | "variables") =>
@@ -565,7 +571,18 @@ async function startGuidedDebug(
     await locateRoute(store, tutor, breakpoints, question);
   }
 
+  ensureCoreTeachingBreakpoint(store, breakpoints);
   await launchGuidedDebugSession(extensionUri, observer);
+}
+
+function ensureCoreTeachingBreakpoint(
+  store: SessionStore,
+  breakpoints: ManagedBreakpointService,
+): void {
+  const coreLocation = store.snapshot().route?.nodes[0]?.location;
+  if (coreLocation && breakpoints.state(coreLocation) === "none") {
+    breakpoints.toggle(coreLocation);
+  }
 }
 
 async function launchGuidedDebugSession(

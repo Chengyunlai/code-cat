@@ -254,27 +254,70 @@ export const runtimeMapStyles = String.raw`
       to { background-position: -200% 50%; }
     }
     .exploration-context {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 18px;
-      margin-top: 12px;
-      padding-top: 16px;
+      margin-top: 20px;
+      padding-top: 20px;
       border-top: 1px solid var(--cc-border);
     }
-    .exploration-copy { min-width: 0; }
-    .exploration-eyebrow { color: var(--cc-muted); font-size: 10px; font-weight: 500; }
-    .exploration-copy h2 {
-      max-width: 62ch;
-      margin: 4px 0 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 13px;
-      font-weight: 600;
+    .core-location { padding-bottom: 20px; }
+    .core-location-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
     }
-    .exploration-copy p { margin: 3px 0 0; color: var(--cc-muted); font-size: 11px; }
-    .exploration-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 6px; }
+    .core-location-label,
+    .core-location-context-label {
+      color: var(--cc-muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .core-location-link {
+      width: auto;
+      min-width: 0;
+      min-height: 32px;
+      margin: 0;
+      padding: 5px 8px;
+      font-size: 11px;
+    }
+    .core-location-open { flex: 0 0 auto; color: var(--cc-muted); }
+    .core-location h2 {
+      max-width: 70ch;
+      margin: 14px 0 10px;
+      font-size: 15px;
+      font-weight: 600;
+      text-wrap: balance;
+    }
+    .core-location-context {
+      max-width: 72ch;
+      margin: 4px 0 0;
+      color: var(--cc-ink);
+      line-height: 1.6;
+      text-wrap: pretty;
+    }
+    .debug-invitation {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 16px 0;
+      border-top: 1px solid var(--cc-border);
+      border-bottom: 1px solid var(--cc-border);
+    }
+    .debug-invitation-copy { min-width: 0; max-width: 68ch; }
+    .debug-invitation h3 { margin: 0; font-size: 13px; font-weight: 600; }
+    .debug-invitation p {
+      margin: 4px 0 0;
+      color: var(--cc-muted);
+      font-size: 11px;
+      text-wrap: pretty;
+    }
+    .debug-invitation-actions { flex: 0 0 auto; }
+    .exploration-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 8px;
+    }
     .path-complete { margin: 2px 0 0; color: var(--cc-muted); font-size: 11px; }
     .route-summary { margin-bottom: 14px; padding: 0 0 12px; color: var(--cc-muted); border-bottom: 1px solid var(--cc-border); }
     .legend { display: flex; flex-wrap: wrap; gap: 8px 13px; margin-bottom: 12px; color: var(--cc-muted); font-size: 10px; }
@@ -489,7 +532,9 @@ export const runtimeMapStyles = String.raw`
       .chat-turn.user .chat-body { max-width: min(92%, 70ch); }
       .composer-shortcut { display: none; }
       .variable-row { grid-template-columns: 1fr; gap: 4px; }
-      .exploration-context { align-items: flex-start; flex-direction: column; }
+      .core-location-header,
+      .debug-invitation { align-items: flex-start; flex-direction: column; }
+      .core-location-link { width: 100%; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }

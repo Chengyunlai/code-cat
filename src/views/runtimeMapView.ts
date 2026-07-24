@@ -67,6 +67,10 @@ interface RenderedDiagnostics {
   readonly variablesTabVisible: boolean;
   readonly renderedRouteNodeCount: number;
   readonly renderedExplorationContextCount: number;
+  readonly coreLocationCount: number;
+  readonly coreLocationText: string;
+  readonly debugInvitationCount: number;
+  readonly debugInvitationText: string;
   readonly composerShortcutText: string;
   readonly composerPlaceholderText: string;
   readonly userMessageSurfaceDeclared: boolean;
@@ -173,6 +177,10 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly variablesTabVisible: boolean;
     readonly renderedRouteNodeCount: number;
     readonly renderedExplorationContextCount: number;
+    readonly renderedCoreLocationCount: number;
+    readonly renderedCoreLocationText: string;
+    readonly renderedDebugInvitationCount: number;
+    readonly renderedDebugInvitationText: string;
     readonly renderedComposerShortcutText: string;
     readonly renderedComposerPlaceholderText: string;
     readonly renderedUserMessageSurfaceDeclared: boolean;
@@ -224,6 +232,11 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedRouteNodeCount: this.renderedDiagnostics.renderedRouteNodeCount,
       renderedExplorationContextCount:
         this.renderedDiagnostics.renderedExplorationContextCount,
+      renderedCoreLocationCount: this.renderedDiagnostics.coreLocationCount,
+      renderedCoreLocationText: this.renderedDiagnostics.coreLocationText,
+      renderedDebugInvitationCount:
+        this.renderedDiagnostics.debugInvitationCount,
+      renderedDebugInvitationText: this.renderedDiagnostics.debugInvitationText,
       renderedComposerShortcutText: this.renderedDiagnostics.composerShortcutText,
       renderedComposerPlaceholderText:
         this.renderedDiagnostics.composerPlaceholderText,
@@ -258,6 +271,16 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     }
     this.composerSmokeResultCount = 0;
     return this.view.webview.postMessage({ type: "smokeComposer" });
+  }
+
+  public async runDebugInviteSmoke(): Promise<boolean> {
+    return this.view?.webview.postMessage({ type: "smokeDebugInvite" }) ??
+      Promise.resolve(false);
+  }
+
+  public async runCoreLocationSmoke(): Promise<boolean> {
+    return this.view?.webview.postMessage({ type: "smokeCoreLocation" }) ??
+      Promise.resolve(false);
   }
 
   public async showTabForSmoke(tab: "overview" | "path" | "stack" | "variables"): Promise<boolean> {
@@ -531,6 +554,10 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     variablesTabVisible: false,
     renderedRouteNodeCount: 0,
     renderedExplorationContextCount: 0,
+    coreLocationCount: 0,
+    coreLocationText: "",
+    debugInvitationCount: 0,
+    debugInvitationText: "",
     composerShortcutText: "",
     composerPlaceholderText: "",
     userMessageSurfaceDeclared: false,
@@ -573,6 +600,10 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
     renderedExplorationContextCount: numberDiagnostic(
       diagnostics.renderedExplorationContextCount,
     ),
+    coreLocationCount: numberDiagnostic(diagnostics.coreLocationCount),
+    coreLocationText: stringDiagnostic(diagnostics.coreLocationText),
+    debugInvitationCount: numberDiagnostic(diagnostics.debugInvitationCount),
+    debugInvitationText: stringDiagnostic(diagnostics.debugInvitationText),
     composerShortcutText:
       typeof diagnostics.composerShortcutText === "string"
         ? diagnostics.composerShortcutText

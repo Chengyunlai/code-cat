@@ -43,7 +43,7 @@ export function createRuntimeMapHtml(webview: vscode.Webview): string {
         </div>
         <nav id="tabs" class="tabs" role="tablist" aria-label="Code Cat 视图">
           <button id="tab-overview" type="button" class="tab" role="tab" data-tab="overview" aria-controls="content" aria-selected="true" tabindex="0">对话</button>
-          <button id="tab-path" type="button" class="tab" role="tab" data-tab="path" aria-controls="content" aria-selected="false" tabindex="-1">路径<span id="path-count" class="tab-count"></span></button>
+          <button id="tab-path" type="button" class="tab" role="tab" data-tab="path" aria-controls="content" aria-selected="false" tabindex="-1">路径图<span id="path-count" class="tab-count"></span></button>
           <button id="tab-stack" type="button" class="tab" role="tab" data-tab="stack" aria-controls="content" aria-selected="false" tabindex="-1">调用栈<span id="stack-count" class="tab-count"></span></button>
           <button id="tab-variables" type="button" class="tab" role="tab" data-tab="variables" aria-controls="content" aria-selected="false" tabindex="-1">变量<span id="variable-count" class="tab-count"></span></button>
         </nav>

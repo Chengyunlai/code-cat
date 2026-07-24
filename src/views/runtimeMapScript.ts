@@ -139,6 +139,13 @@ export const runtimeMapScript = String.raw`
             variablesTabVisible: !document.getElementById('tab-variables').hidden,
             renderedRouteNodeCount: elements.content.querySelectorAll('.path-node').length,
             renderedExplorationContextCount: elements.content.querySelectorAll('.exploration-context').length,
+            coreLocationCount: elements.content.querySelectorAll('.core-location').length,
+            coreLocationText:
+              elements.content.querySelector('.core-location')?.textContent || '',
+            debugInvitationCount:
+              elements.content.querySelectorAll('.debug-invitation').length,
+            debugInvitationText:
+              elements.content.querySelector('.debug-invitation')?.textContent || '',
             composerShortcutText: elements.composerShortcut.textContent,
             composerPlaceholderText: elements.question.placeholder,
             userMessageSurfaceDeclared: Boolean(
@@ -165,6 +172,13 @@ export const runtimeMapScript = String.raw`
       } else if (event.data?.type === 'smokeTab') {
         activeTab = event.data.tab;
         render(currentState);
+      } else if (event.data?.type === 'smokeDebugInvite') {
+        const startDebug = elements.content.querySelector(
+          '[data-action="start-guided-debug"]',
+        );
+        startDebug?.click();
+      } else if (event.data?.type === 'smokeCoreLocation') {
+        elements.content.querySelector('.core-location-link')?.click();
       }
     });
 
@@ -511,30 +525,105 @@ export const runtimeMapScript = String.raw`
 
     function renderExplorationContext(root, state) {
       const route = state.route;
-      const revealed = route.nodes.length;
-      const total = route.totalNodeCount || revealed;
+      const coreNode = route.nodes[0];
+      if (!coreNode) return;
       const section = document.createElement('section');
       section.className = 'exploration-context';
-      const copy = document.createElement('div');
-      copy.className = 'exploration-copy';
-      const eyebrow = document.createElement('span');
-      eyebrow.className = 'exploration-eyebrow';
-      eyebrow.textContent = '当前代码探索';
+      const core = document.createElement('div');
+      core.className = 'core-location';
+      const coreHeader = document.createElement('div');
+      coreHeader.className = 'core-location-header';
+      const label = document.createElement('span');
+      label.className = 'core-location-label';
+      label.textContent = '核心代码位置';
+      const location = document.createElement('button');
+      location.type = 'button';
+      location.className = 'source-link core-location-link';
+      location.setAttribute(
+        'aria-label',
+        '打开 ' + coreNode.fileLabel + ' 第 ' + coreNode.location.line + ' 行',
+      );
+      const sourceName = document.createElement('span');
+      sourceName.className = 'source-name';
+      sourceName.textContent = coreNode.fileLabel + ':' + coreNode.location.line;
+      const openLabel = document.createElement('span');
+      openLabel.className = 'core-location-open';
+      openLabel.textContent = '打开代码 ↗';
+      location.append(sourceName, openLabel);
+      location.addEventListener('click', () => {
+        vscode.postMessage({ type: 'selectRouteNode', nodeId: coreNode.id });
+      });
+      coreHeader.append(label, location);
       const title = document.createElement('h2');
-      title.textContent = route.question;
-      const detail = document.createElement('p');
-      detail.textContent = '已展开 ' + revealed + '/' + total + ' 个关键位置。先读当前证据，再决定是否继续深入。';
-      copy.append(eyebrow, title, detail);
+      title.textContent = coreNode.title;
+      const contextLabel = document.createElement('span');
+      contextLabel.className = 'core-location-context-label';
+      contextLabel.textContent = '为什么先看这里';
+      const context = document.createElement('p');
+      context.className = 'core-location-context';
+      context.textContent = coreNode.reason;
+      core.append(coreHeader, title, contextLabel, context);
+
+      const debugInvitation = document.createElement('div');
+      debugInvitation.className = 'debug-invitation';
+      const debugCopy = document.createElement('div');
+      debugCopy.className = 'debug-invitation-copy';
+      const debugTitle = document.createElement('h3');
+      const debugDetail = document.createElement('p');
+      const debugActions = document.createElement('div');
+      debugActions.className = 'debug-invitation-actions';
+      const startGuidedDebugAction = (label) => {
+        const startDebug = actionButton(label, 'primary', () => {
+          activeTab = 'path';
+          render(currentState);
+          vscode.postMessage({ type: 'startDebug', question: route.question });
+        });
+        startDebug.dataset.action = 'start-guided-debug';
+        return startDebug;
+      };
+      if (state.debugging) {
+        debugInvitation.classList.add('active');
+        debugTitle.textContent = '断点验证进行中';
+        debugDetail.textContent =
+          '路径图会标记真实执行位置；命中断点后，调用栈和变量会同步更新。';
+        debugActions.appendChild(actionButton('查看运行时信息', 'quiet', () => {
+          switchTab((state.frames || []).length ? 'stack' : 'path');
+        }));
+      } else if (state.debugStatus === 'ended') {
+        debugInvitation.classList.add('active');
+        if ((state.pauses || []).length) {
+          debugTitle.textContent = '断点验证已结束';
+          debugDetail.textContent = '已保留本次运行采集的路径、调用栈和变量信息。';
+          debugActions.appendChild(actionButton('查看运行时信息', 'quiet', () => {
+            switchTab((state.frames || []).length ? 'stack' : 'path');
+          }));
+        } else {
+          debugTitle.textContent = '断点没有命中';
+          debugDetail.textContent =
+            '这次运行暂时没有调用栈和变量。检查触发条件后，可以直接重新运行。';
+          debugActions.appendChild(startGuidedDebugAction('重新运行'));
+        }
+      } else {
+        debugTitle.textContent = '想通过断点看看这个过程吗？';
+        debugDetail.textContent =
+          'Code Cat 会先在 ' +
+          coreNode.fileLabel + ':' + coreNode.location.line +
+          ' 放置临时断点。命中后，路径图、调用栈和变量会同步更新。';
+        debugActions.appendChild(startGuidedDebugAction('用断点跟一遍'));
+      }
+      debugCopy.append(debugTitle, debugDetail);
+      debugInvitation.append(debugCopy, debugActions);
+
       const actions = document.createElement('div');
       actions.className = 'exploration-actions';
-      actions.appendChild(actionButton('查看关键位置', 'primary', () => switchTab('path')));
-      actions.appendChild(actionButton('追问这个方向', 'quiet', focusExplorationQuestion));
+      actions.appendChild(actionButton('查看路径图', 'quiet', () => switchTab('path')));
+      actions.appendChild(actionButton('追问这个位置', 'quiet', focusExplorationQuestion));
       if (route.canRevealMore) {
         actions.appendChild(actionButton('继续下一处', 'quiet', () => {
           vscode.postMessage({ type: 'revealNextRouteNode' });
         }));
       }
-      section.append(copy, actions);
+      section.append(core, debugInvitation, actions);
       root.appendChild(section);
     }
 

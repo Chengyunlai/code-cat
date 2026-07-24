@@ -294,10 +294,39 @@ async function run() {
         state?.revealedRouteNodeCount === 1 &&
         state.runtimeMap?.pathTabVisible === true &&
         state.runtimeMap.stackTabVisible === false &&
-        state.runtimeMap.renderedExplorationContextCount === 1,
+        state.runtimeMap.renderedExplorationContextCount === 1 &&
+        state.runtimeMap.renderedCoreLocationCount === 1 &&
+        state.runtimeMap.renderedDebugInvitationCount === 1,
       "the conversation to expose one progressive code exploration",
     );
     assert.equal(progressiveOverview.runtimeMap.visibleTabCount, 2);
+    for (const expectedCoreEvidence of [
+      /预留库存/u,
+      /checkout\.py/u,
+      /关键证据/u,
+    ]) {
+      assert.match(
+        progressiveOverview.runtimeMap.renderedCoreLocationText,
+        expectedCoreEvidence,
+        "the answer must include the first core code location and its context",
+      );
+    }
+    assert.match(
+      progressiveOverview.runtimeMap.renderedDebugInvitationText,
+      /想通过断点看看这个过程吗[\s\S]*用断点跟一遍/u,
+      "guided debugging must be presented as a separate optional next step",
+    );
+    assert.equal(
+      await vscode.commands.executeCommand("codeCat.__runCoreLocationSmoke"),
+      true,
+    );
+    await waitForValue(
+      () => Promise.resolve(vscode.window.activeTextEditor),
+      (editor) =>
+        editor?.document.uri.fsPath === checkoutUri.fsPath &&
+        editor.selection.active.line === breakpointLine,
+      "the core code location to open at its precise source line",
+    );
     await vscode.commands.executeCommand("codeCat.__showSmokeTab", "path");
     const firstPathStep = await waitForValue(
       () => vscode.commands.executeCommand("codeCat.__smokeState"),
@@ -405,21 +434,41 @@ async function run() {
       "starting a new Code Cat conversation must remove managed breakpoints",
     );
     await vscode.commands.executeCommand("codeCat.__seedRouteGuidance", codeCatLocation);
-    await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    await vscode.commands.executeCommand("codeCat.__showSmokeTab", "overview");
+    await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) => state?.runtimeMap?.renderedDebugInvitationCount === 1,
+      "the guided debug invitation to become visible",
+    );
 
     const started = waitForEvent(
       vscode.debug.onDidStartDebugSession,
       (candidate) => candidate.type === "debugpy",
       "debugpy session to start",
     );
-    const [, startedSession] = await Promise.all([
+    const [inviteDelivered, startedSession] = await Promise.all([
       withTimeout(
-        vscode.commands.executeCommand("codeCat.__startSmokeDebug"),
-        "Code Cat smoke debug command",
+        vscode.commands.executeCommand("codeCat.__runDebugInviteSmoke"),
+        "Code Cat guided debug invitation",
       ),
       started,
     ]);
+    assert.equal(inviteDelivered, true);
     session = startedSession;
+    assert.equal(
+      hasBreakpoint(checkoutUri, breakpointLine),
+      true,
+      "accepting guided debugging must place the core teaching breakpoint",
+    );
+    const guidedDebugTabs = await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) =>
+        state?.runtimeMap?.pathTabVisible === true &&
+        state.runtimeMap.stackTabVisible === true &&
+        state.runtimeMap.variablesTabVisible === true,
+      "guided debugging to expose the path map, call stack, and variables",
+    );
+    assert.equal(guidedDebugTabs.runtimeMap.visibleTabCount, 4);
 
     const stackItem = await waitForEvent(
       vscode.debug.onDidChangeActiveStackItem,
