@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { AiTutor, TutorGuidanceError } from "./ai/aiTutor";
 import { ModelProviderService } from "./ai/modelProviderService";
 import { TokenUsageTracker } from "./ai/tokenUsageTracker";
+import { shouldShowDebugEvidence } from "./core/debugEvidenceVisibility";
 import { revealLocation } from "./core/locations";
 import { SessionActionCoordinator } from "./core/sessionActionCoordinator";
 import { SessionStore } from "./core/sessionStore";
@@ -22,9 +23,10 @@ import {
   PYTHON_SOURCE_SELECTOR,
   SourceGuidanceController,
 } from "./views/sourceGuidance";
+import { TokenUsageStatusBar } from "./views/tokenUsageStatusBar";
 
 export function activate(context: vscode.ExtensionContext): void {
-  const store = new SessionStore();
+  const store = new SessionStore(context.workspaceState);
   const projectIndex = new PythonProjectIndex();
   const usageTracker = new TokenUsageTracker(context.workspaceState);
   const modelProvider = new ModelProviderService(context, usageTracker);
@@ -34,6 +36,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const callStackTree = new CallStackTree(store);
   const actionCoordinator = new SessionActionCoordinator(store);
   const sourceGuidance = new SourceGuidanceController(store, breakpoints);
+  const tokenUsageStatus = new TokenUsageStatusBar(usageTracker);
+  const updateDebugEvidenceContext = (): void => {
+    const state = store.snapshot();
+    void vscode.commands.executeCommand(
+      "setContext",
+      "codeCat.debugEvidenceVisible",
+      shouldShowDebugEvidence(
+        state,
+        (location) => breakpoints.state(location) !== "none",
+      ),
+    );
+  };
+  updateDebugEvidenceContext();
 
   const toggleBreakpoint = (location: SourceLocation): void => {
     if (breakpoints.toggle(location) === "external") {
@@ -77,10 +92,8 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand("codeCat.configureModelProvider");
     },
     modelProviderStatus: () => modelProvider.status(),
-    tokenUsageSnapshot: () => usageTracker.snapshot(),
-    resetProjectTokenUsage: async () => {
-      await vscode.commands.executeCommand("codeCat.resetProjectTokenUsage");
-    },
+    showConversationHistory: () =>
+      showConversationHistory(store, breakpoints, usageTracker),
   };
   const runtimeMap = new RuntimeMapView(context.extensionUri, store, actions);
 
@@ -92,8 +105,10 @@ export function activate(context: vscode.ExtensionContext): void {
     callStackTree,
     breakpoints,
     sourceGuidance,
+    tokenUsageStatus,
     runtimeMap,
-    usageTracker.onDidChange(() => runtimeMap.refresh()),
+    store.onDidChange(updateDebugEvidenceContext),
+    vscode.debug.onDidChangeBreakpoints(updateDebugEvidenceContext),
     vscode.languages.registerCodeLensProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
     vscode.languages.registerHoverProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
     vscode.window.registerTreeDataProvider("codeCat.callStack", callStackTree),
@@ -165,6 +180,9 @@ export function activate(context: vscode.ExtensionContext): void {
       await usageTracker.resetProject();
       void vscode.window.showInformationMessage("已重置当前项目的 Token 用量累计。");
     }),
+    vscode.commands.registerCommand("codeCat.showTokenUsage", () =>
+      tokenUsageStatus.showDetails(),
+    ),
     vscode.commands.registerCommand(
       "codeCat.revealLocation",
       async (location: unknown, frameId?: unknown) => {
@@ -205,11 +223,16 @@ export function activate(context: vscode.ExtensionContext): void {
         debugStatus: store.snapshot().debugStatus,
         pauseCount: store.snapshot().pauses.length,
         chatMessageCount: store.snapshot().chatMessages.length,
+        conversationId: store.snapshot().conversationId,
+        conversationTitle: store.snapshot().conversationTitle,
+        conversationHistoryCount: store.conversationSummaries().length,
+        revealedRouteNodeCount: store.snapshot().revealedRouteNodeCount,
         lastPauseFrameCount: store.selectedPause()?.frames.length ?? 0,
         lastPauseTopFramePath: store.selectedPause()?.frames[0]?.location?.path,
         lastPauseTopFrameLine: store.selectedPause()?.frames[0]?.location?.line,
         lastPauseVariableCount: store.selectedPause()?.variables.length ?? 0,
         callStackFrameCount: callStackTree.getChildren().length,
+        tokenUsageStatus: tokenUsageStatus.diagnostics(),
         runtimeMap: runtimeMap.smokeDiagnostics(),
       })),
       vscode.commands.registerCommand("codeCat.__startSmokeDebug", () =>
@@ -221,6 +244,14 @@ export function activate(context: vscode.ExtensionContext): void {
       }),
       vscode.commands.registerCommand("codeCat.__runComposerSmoke", () =>
         runtimeMap.runComposerSmoke(),
+      ),
+      vscode.commands.registerCommand(
+        "codeCat.__showSmokeTab",
+        (tab: "overview" | "path" | "stack" | "variables") =>
+          runtimeMap.showTabForSmoke(tab),
+      ),
+      vscode.commands.registerCommand("codeCat.__revealNextRouteNode", () =>
+        store.revealNextRouteNode(),
       ),
       vscode.commands.registerCommand("codeCat.__modelProviderStatus", () =>
         modelProvider.status(),
@@ -335,6 +366,14 @@ export function activate(context: vscode.ExtensionContext): void {
                 reason: "这里把请求中的商品和数量交给库存边界，是结账能否继续的关键证据。",
                 confidence: "high",
               },
+              {
+                id: "source-guidance-smoke-next",
+                title: "继续跟进库存结果",
+                symbol: "checkout",
+                location: { ...location, line: location.line + 1 },
+                reason: "只有用户选择继续探索后，才揭示库存结果如何影响后续结账流程。",
+                confidence: "medium",
+              },
             ],
           });
         },
@@ -344,6 +383,70 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {}
+
+async function showConversationHistory(
+  store: SessionStore,
+  breakpoints: ManagedBreakpointService,
+  usageTracker: TokenUsageTracker,
+): Promise<void> {
+  if (store.snapshot().requestKind) {
+    void vscode.window.showInformationMessage(
+      "请等待当前 Code Cat 请求完成后再切换会话。",
+    );
+    return;
+  }
+  const summaries = store.conversationSummaries();
+  const selection = await vscode.window.showQuickPick(
+    [
+      {
+        label: "$(add) 新建会话",
+        description: "清除临时断点，开始一个独立问题",
+        conversationId: undefined,
+      },
+      ...summaries.map((conversation) => ({
+        label: conversation.active
+          ? `$(check) ${conversation.title}`
+          : `$(comment-discussion) ${conversation.title}`,
+        description: conversation.active
+          ? "当前会话"
+          : formatConversationTime(conversation.updatedAt),
+        conversationId: conversation.id,
+      })),
+    ],
+    {
+      title: "Code Cat · 历史会话",
+      placeHolder: summaries.length
+        ? "重新打开一个问题，或开始新会话"
+        : "当前还没有可恢复的历史会话",
+    },
+  );
+  if (!selection) {
+    return;
+  }
+  if (selection.conversationId === store.snapshot().conversationId) {
+    return;
+  }
+  const switched =
+    selection.conversationId === undefined
+      ? store.clear()
+      : store.switchConversation(selection.conversationId);
+  if (switched) {
+    breakpoints.clear();
+    usageTracker.clearSession();
+  }
+}
+
+function formatConversationTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : new Intl.DateTimeFormat("zh-CN", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date);
+}
 
 async function answerQuestion(
   store: SessionStore,

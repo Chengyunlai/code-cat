@@ -5,18 +5,22 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 ## Current vertical slice
 
 - Build a cached structural index of Python files, classes, functions, and async functions.
-- Ask a configured VS Code or bring-your-own-key model to propose 3–8 high-value reading stops.
-- Open every proposed stop in the editor and toggle a linked source breakpoint from the map.
+- Ask a configured VS Code or bring-your-own-key model to plan up to eight high-value reading
+  stops, while revealing them one at a time instead of presenting a complete chain up front.
+- Open each revealed stop in the editor and toggle a linked source breakpoint from the map.
 - Observe Python/debugpy Debug Adapter Protocol traffic without replacing the Python debugger.
 - Capture the real call stack and bounded top-frame variables at each pause.
 - Redact common credential-like variable names before display or model use.
 - Navigate between route nodes, historical pauses, stack frames, and source code.
 - Ask the model to explain the current pause from runtime evidence.
+- Keep an independent, workspace-local history of code-reading conversations and reopen them
+  from the conversation title in the Code Cat header.
 - Track reported or estimated token usage for the last request, current conversation, and current project.
 - Keep user messages visually distinct with a restrained theme-aware surface; press **Enter** to
   send and **Shift+Enter** to insert a line break.
-- Follow one guided workspace with task/debug status, current lesson, execution-path,
-  call-stack, and variable tabs, plus a contextual question box fixed at the bottom.
+- Keep **Conversation** as the primary surface. Add **Path** only after a concrete code
+  exploration exists, then add **Call Stack** and **Variables** only after the learner chooses
+  a breakpoint or Code Cat captures a real pause.
 
 ## Install in VS Code
 
@@ -112,16 +116,18 @@ providers above.
 
 ### Model usage and repeated-project optimization
 
-After the first model request, a compact **Model usage** section appears at the bottom of the
-Runtime Map. It separates three scopes:
+After the first model request, Code Cat shows a compact pulse item in the **VS Code status bar**.
+Hover it for a quick summary, or click it / run **Code Cat: Show Model Usage** to open the
+native VS Code picker with three scopes:
 
 - **Last request** shows input, output, cache-read, and total tokens, plus whether the value was
   reported by the provider or estimated locally.
 - **Current conversation** accumulates reported and estimated values separately. Running
-  **Code Cat: New Conversation** clears this scope and the last-request value.
+  **Code Cat: New Conversation** clears this scope and the last-request value. Reopening a
+  historical conversation also starts a fresh local usage window; the project total remains.
 - **Current project** keeps accumulating across conversations. It is stored in VS Code
-  `workspaceState`, never in the project repository. Use **Reset project token usage** in the
-  Runtime Map or run **Code Cat: Reset Project Token Usage** to clear only this local total.
+  `workspaceState`, never in the project repository. Select **Reset project total** in the
+  usage picker or run **Code Cat: Reset Project Token Usage** to clear only this local total.
 
 OpenAI Responses, OpenAI-compatible/NewAPI, Anthropic, and Gemini usage fields are normalized
 into the same display. When a direct API omits usage, Code Cat estimates CJK characters at about
@@ -135,11 +141,30 @@ Python file changes. Stable instructions, the file list, and the first 560 deter
 ordered symbol rows are placed before the small question-ranked symbol tail, recent conversation,
 and the current question. This gives providers with automatic prefix caching a long reusable
 prompt prefix without removing the 600-symbol broad fallback. When a provider reports cache
-reads, the Runtime Map
-shows both the cached-token count and its share of input tokens. Cache behavior remains controlled
-by the provider; a zero or absent cache count does not indicate an error. A later retrieval pass
-can reduce the broad symbol fallback further without weakening Chinese questions that contain no
+reads, the usage picker shows the cached-token counts. Cache behavior remains controlled by the
+provider; a zero or absent cache count does not indicate an error. A later retrieval pass can
+reduce the broad symbol fallback further without weakening Chinese questions that contain no
 English symbol terms.
+
+### Conversations and progressive exploration
+
+The first message gives the conversation its title. The starting question and all related
+follow-ups remain one conversation until **Code Cat: New Conversation** is selected. Click the
+conversation title beside **Code Cat /** to use the native VS Code picker:
+
+- **New conversation** clears Code Cat-owned temporary breakpoints and starts an independent
+  question.
+- A historical conversation restores its messages, latest reading path, and how far that path
+  had been revealed.
+- Up to 20 recent non-empty conversations are stored in VS Code `workspaceState` for the current
+  workspace. No conversation file is written to the Python repository.
+
+For a code question, the initial answer addresses only that question and introduces a **Current
+code exploration** row. Open **Path** to read the first key location. Select **Continue to next
+location** only when that evidence is useful; Code Cat then reveals one additional location in
+the map, CodeLens, and source hover. A planned path is a reading hypothesis, not a runtime call
+stack. Use **Ask about this direction** whenever you want to name the branch, function, or
+failure case you care about before revealing more.
 
 ### 4. First guided-debug session
 
@@ -149,8 +174,11 @@ English symbol terms.
    **Shift+Enter** to add a line break. Your messages use a subtle background so they stay
    distinct from Code Cat's replies. Code Cat automatically chooses conversation or code-path
    mode.
-3. For a code-path question, wait for the proposed route.
-4. Toggle a teaching breakpoint on a proposed route node. When possible, Code Cat refines a
+3. For a code-path question, read the initial answer, open **Path**, and follow the first
+   revealed location. Use **Continue to next location** to deepen the path one step at a time.
+4. Toggle a teaching breakpoint on a revealed route node. The **Call Stack**, **Variables**, and
+   native Code Cat call-stack view appear only after this debug intent exists. When possible,
+   Code Cat refines a
    function declaration to its first executable statement.
 5. Select **Start guided debug**. Code Cat resolves what to run in this order:
    - a Python/debugpy configuration already present in `.vscode/launch.json`;
@@ -256,7 +284,8 @@ Set `CODE_CAT_VSCODE_EXTENSIONS_DIR` only when the isolated target itself must m
 and explicit Microsoft Python extension dependencies. It verifies activation, model-provider
 command registration, provider-specific usage normalization and fallback estimation, local usage
 ledger behavior, linked breakpoint creation and restoration, debugpy startup, real pauses,
-captured stack frames and variables, native call-stack data, Runtime Map and token-usage rendering,
+captured stack frames and variables, native call-stack data, progressive Runtime Map rendering,
+status-bar token usage,
 Step Over, and a `[project.scripts]` entry module that defines—but does not directly call—its
 `main()` function.
 
@@ -268,7 +297,8 @@ Code Cat treats readability as a product invariant rather than leaving presentat
 model response:
 
 - A planned route is limited to validated files and 1–8 bounded nodes; titles, summaries, and
-  reasons are length-limited before entering session state.
+  reasons are length-limited before entering session state. Its summary answers the current
+  question without enumerating the complete route, and only the revealed prefix reaches the UI.
 - A pause explanation must decode into exactly three fields: **what happened**, **why it
   matters**, and **what to inspect next**. Missing or malformed fields are never rendered as raw
   model output; the paused source, fallback explanation, stack, variables, and debug actions stay
@@ -276,9 +306,9 @@ model response:
 - Debug variables are normalized once at capture time: debugger grouping rows are removed,
   duplicate names are collapsed, credential-like names are redacted, line breaks are folded,
   and displayed values are bounded.
-- The paused overview follows the reading order **top-frame source location → explanation →
-  top-frame runtime evidence → next debug action**. Full call-stack navigation remains in its
-  dedicated tab so selecting an upstream caller cannot relabel top-frame evidence.
+- The **Call Stack** tab follows the reading order **top-frame source location → structured
+  explanation → real frames → next debug action**. Variables stay in their own tab so runtime
+  evidence never replaces the conversation.
 - Conversational Markdown is rendered into a small safe subset of DOM elements; model text is
   never inserted as executable HTML.
 
@@ -314,5 +344,6 @@ protocol boundary.
 - The structural index uses Python declaration scanning, not a complete Python parser.
 - Route planning currently makes one model pass; a production version should use symbol/call-hierarchy retrieval followed by a smaller evidence-grounded model pass.
 - Variable capture is limited to the top frame and bounded by settings.
-- No session persistence, unit-test suite, CI, marketplace packaging metadata, telemetry, or multi-root route disambiguation yet.
+- No dedicated unit-test runner, CI, marketplace publishing metadata, telemetry, or multi-root
+  route disambiguation yet. Conversation history is workspace-local rather than cloud-synced.
 - The webview currently renders a focused execution map rather than an unrestricted mind-map editor.

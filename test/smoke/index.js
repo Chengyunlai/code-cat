@@ -27,6 +27,7 @@ async function run() {
     "codeCat.configureModelProvider",
     "codeCat.testModelProvider",
     "codeCat.clearModelApiKey",
+    "codeCat.showTokenUsage",
     "codeCat.resetProjectTokenUsage",
     "codeCat.explainPause",
     "codeCat.continue",
@@ -36,12 +37,14 @@ async function run() {
     "codeCat.__smokeState",
     "codeCat.__showSmokeView",
     "codeCat.__runComposerSmoke",
+    "codeCat.__showSmokeTab",
     "codeCat.__modelProviderStatus",
     "codeCat.__seedChat",
     "codeCat.__seedTutorError",
     "codeCat.__seedStructuredPause",
     "codeCat.__seedPauseTutorError",
     "codeCat.__seedRouteGuidance",
+    "codeCat.__revealNextRouteNode",
     "codeCat.__seedUsage",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
@@ -51,9 +54,10 @@ async function run() {
   await testTokenUsageTracking();
   await testRoutePreflight();
   testRuntimeEvidenceConstraints();
-  testConversationState();
+  await testConversationState();
   await testProviderSpecificSettings();
   testModelProviderSecurity();
+  await vscode.commands.executeCommand("codeCat.clearSession");
 
   await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   await vscode.commands.executeCommand("codeCat.runtimeMap.focus");
@@ -86,20 +90,11 @@ async function run() {
   const renderedUsageState = await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
     (state) =>
-      state?.runtimeMap?.renderedUsageSectionCount === 1 &&
-      state.runtimeMap.renderedUsageScopeCount === 3 &&
-      state.runtimeMap.renderedUsageReportedCount >= 2 &&
-      state.runtimeMap.renderedUsageEstimatedCount >= 2 &&
-      state.runtimeMap.renderedUsageCacheCount >= 1 &&
+      state?.tokenUsageStatus?.visible === true &&
       state.runtimeMap.scriptError === undefined,
-    "the Runtime Map to render reported, estimated, and cached token usage",
+    "the VS Code status bar to show model usage",
   );
-  assert.equal(renderedUsageState.runtimeMap.renderedUsageResetButtonCount, 1);
-  assert.equal(
-    renderedUsageState.runtimeMap.renderedUsageLastCacheDetailCount,
-    1,
-    "the latest request must show its cache-read amount, including zero",
-  );
+  assert.match(renderedUsageState.tokenUsageStatus.text, /171/u);
   await vscode.commands.executeCommand("codeCat.__seedChat");
   const renderedChatState = await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
@@ -134,12 +129,13 @@ async function run() {
   await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
     (state) =>
-      state?.runtimeMap?.renderedContentMode === "message" &&
+      state?.runtimeMap?.renderedContentMode === "chat" &&
       state.runtimeMap.tutorMessageRendered === true &&
       state.runtimeMap.scriptError === undefined,
     "the Runtime Map to render tutor feedback in its main content area",
   );
   await vscode.commands.executeCommand("codeCat.__seedStructuredPause");
+  await vscode.commands.executeCommand("codeCat.__showSmokeTab", "stack");
   const structuredPauseState = await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
     (state) =>
@@ -150,9 +146,10 @@ async function run() {
   );
   assert.equal(structuredPauseState.runtimeMap.renderedPauseExplanationSectionCount, 3);
   assert.equal(structuredPauseState.runtimeMap.renderedPauseRichTextElementCount, 2);
-  assert.equal(structuredPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 2);
-  assert.equal(structuredPauseState.runtimeMap.renderedVariablePreviewCount, 3);
-  assert.ok(structuredPauseState.runtimeMap.renderedVariablePreviewMaxLength <= 120);
+  assert.equal(structuredPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 0);
+  assert.equal(structuredPauseState.runtimeMap.renderedVariablePreviewCount, 0);
+  assert.equal(structuredPauseState.runtimeMap.stackTabVisible, true);
+  assert.equal(structuredPauseState.runtimeMap.variablesTabVisible, true);
   const interactionMotion = structuredPauseState.runtimeMap.renderedInteractionMotion;
   assert.match(
     interactionMotion.actionTransitionProperty,
@@ -189,7 +186,7 @@ async function run() {
     "the Runtime Map to preserve runtime evidence after a structured explanation error",
   );
   assert.equal(preservedPauseState.runtimeMap.renderedPauseExplanationSectionCount, 3);
-  assert.equal(preservedPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 2);
+  assert.equal(preservedPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 0);
   await vscode.commands.executeCommand("codeCat.clearSession");
 
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -213,6 +210,32 @@ async function run() {
   let session;
   try {
     await vscode.commands.executeCommand("codeCat.__seedRouteGuidance", codeCatLocation);
+    const progressiveOverview = await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) =>
+        state?.revealedRouteNodeCount === 1 &&
+        state.runtimeMap?.pathTabVisible === true &&
+        state.runtimeMap.stackTabVisible === false &&
+        state.runtimeMap.renderedExplorationContextCount === 1,
+      "the conversation to expose one progressive code exploration",
+    );
+    assert.equal(progressiveOverview.runtimeMap.visibleTabCount, 2);
+    await vscode.commands.executeCommand("codeCat.__showSmokeTab", "path");
+    const firstPathStep = await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) => state?.runtimeMap?.renderedRouteNodeCount === 1,
+      "the path tab to render only the first revealed code location",
+    );
+    assert.equal(firstPathStep.revealedRouteNodeCount, 1);
+    await vscode.commands.executeCommand("codeCat.__revealNextRouteNode");
+    const secondPathStep = await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) =>
+        state?.revealedRouteNodeCount === 2 &&
+        state.runtimeMap?.renderedRouteNodeCount === 2,
+      "the path tab to reveal exactly one additional code location",
+    );
+    assert.equal(secondPathStep.runtimeMap.visibleTabCount, 2);
     const routeCodeLenses = await vscode.commands.executeCommand(
       "vscode.executeCodeLensProvider",
       checkoutUri,
@@ -220,7 +243,7 @@ async function run() {
     );
     const routeCodeLensTitles = routeCodeLenses.map((lens) => lens.command?.title);
     assert.ok(
-      routeCodeLensTitles.some((title) => title?.includes("Code Cat · 第 1/1 步")),
+      routeCodeLensTitles.some((title) => title?.includes("Code Cat · 第 1/2 步")),
       "the route source line should expose its teaching context as CodeLens",
     );
     assert.ok(
@@ -239,6 +262,14 @@ async function run() {
     assert.match(routeHoverText, /为什么在这里停/u);
     assert.match(routeHoverText, /预留库存/u);
     await vscode.commands.executeCommand("codeCat.toggleBreakpoint", codeCatLocation);
+    const breakpointTabs = await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) =>
+        state?.runtimeMap?.stackTabVisible === true &&
+        state.runtimeMap.variablesTabVisible === true,
+      "runtime evidence tabs to appear after the learner chooses a breakpoint",
+    );
+    assert.equal(breakpointTabs.runtimeMap.visibleTabCount, 4);
     await vscode.commands.executeCommand("workbench.action.closeSidebar");
     await waitForValue(
       () => Promise.resolve(hasBreakpoint(checkoutUri, breakpointLine)),
@@ -523,8 +554,18 @@ function testRuntimeEvidenceConstraints() {
   assert.equal(snapshots[2].value.endsWith("…"), true);
 }
 
-function testConversationState() {
-  const store = new SessionStore();
+async function testConversationState() {
+  const values = new Map();
+  const workspaceState = {
+    get(key) {
+      return values.get(key);
+    },
+    update(key, value) {
+      values.set(key, value);
+      return Promise.resolve();
+    },
+  };
+  const store = new SessionStore(workspaceState);
   try {
     store.addChatExchange("你好", "你好！想聊聊什么？");
     assert.deepEqual(
@@ -535,6 +576,8 @@ function testConversationState() {
       ],
     );
     assert.equal(store.snapshot().contentMode, "chat");
+    assert.equal(store.snapshot().conversationTitle, "你好");
+    const firstConversationId = store.snapshot().conversationId;
     store.setRoute({
       question: "结账请求经过哪些函数？",
       summary: "结账从入口进入库存与支付流程。",
@@ -546,6 +589,13 @@ function testConversationState() {
           reason: "Entry point",
           confidence: "high",
         },
+        {
+          id: "route-node-2",
+          title: "Inventory",
+          location: { path: "/tmp/inventory.py", line: 5, column: 1 },
+          reason: "Inventory boundary",
+          confidence: "medium",
+        },
       ],
     });
     assert.deepEqual(
@@ -555,18 +605,22 @@ function testConversationState() {
         { role: "assistant", text: "结账从入口进入库存与支付流程。" },
       ],
     );
-    assert.equal(store.snapshot().contentMode, "route");
+    assert.equal(
+      store.snapshot().contentMode,
+      "chat",
+      "locating a path must keep the conversation as the primary surface",
+    );
+    assert.equal(store.snapshot().revealedRouteNodeCount, 1);
+    assert.equal(store.revealNextRouteNode(), true);
+    assert.equal(store.snapshot().revealedRouteNodeCount, 2);
+    assert.equal(store.revealNextRouteNode(), false);
 
     store.setTutorMessage({
       id: "model-error",
       kind: "error",
       text: "模型暂时不可用，请稍后重试。",
     });
-    assert.equal(
-      store.snapshot().contentMode,
-      "message",
-      "a tutor error must replace chat or route content instead of being hidden behind it",
-    );
+    assert.equal(store.snapshot().contentMode, "chat");
 
     store.beginDebugSession("debug-session");
     store.recordPause({
@@ -627,11 +681,34 @@ function testConversationState() {
         },
       ],
     });
-    assert.equal(store.snapshot().contentMode, "route");
+    assert.equal(store.snapshot().contentMode, "chat");
     assert.equal(store.snapshot().debugStatus, "paused");
     assert.equal(store.snapshot().pauses.length, 1);
     assert.equal(store.snapshot().selectedPauseId, "pause-1");
     assert.equal(store.snapshot().selectedFrameId, 101);
+
+    assert.equal(store.clear(), true);
+    const secondConversationId = store.snapshot().conversationId;
+    assert.notEqual(secondConversationId, firstConversationId);
+    assert.equal(store.snapshot().chatMessages.length, 0);
+    assert.equal(store.conversationSummaries().length, 1);
+    assert.equal(store.conversationSummaries()[0].id, firstConversationId);
+    assert.equal(store.switchConversation(firstConversationId), true);
+    assert.equal(store.snapshot().conversationId, firstConversationId);
+    assert.equal(store.snapshot().chatMessages.length, 8);
+    assert.equal(store.snapshot().route.question, "支付失败会经过哪些函数？");
+    assert.equal(store.snapshot().revealedRouteNodeCount, 1);
+
+    await store.whenPersisted();
+    const restored = new SessionStore(workspaceState);
+    try {
+      assert.equal(restored.snapshot().conversationId, firstConversationId);
+      assert.equal(restored.snapshot().conversationTitle, "你好");
+      assert.equal(restored.snapshot().chatMessages.length, 8);
+      assert.equal(restored.conversationSummaries().length, 1);
+    } finally {
+      restored.dispose();
+    }
   } finally {
     store.dispose();
   }
@@ -835,7 +912,9 @@ async function testRoutePreflight() {
           routePrompt = prompt;
           return JSON.stringify({
             kind: "route",
-            summary: "Checkout route",
+            summary:
+              "结账从请求入口开始，先确认输入如何进入 checkout。\n" +
+              "1. checkout.py:23\n2. inventory.py:8\n3. payment.py:12",
             nodes: [
               {
                 title: "Checkout",
@@ -875,6 +954,11 @@ async function testRoutePreflight() {
       "recent conversation should remain immediately before the current user message",
     );
     assert.equal(routeResult.kind, "route");
+    assert.equal(
+      routeResult.route.summary,
+      "结账从请求入口开始，先确认输入如何进入 checkout。",
+      "the chat summary must not leak the model's complete route enumeration",
+    );
     assert.equal(routeResult.route.nodes.length, 2);
     assert.equal(
       routeResult.route.nodes[0].location.line,

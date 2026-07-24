@@ -119,10 +119,11 @@ export class SourceGuidanceController
       return [];
     }
     const documentPath = normalizePath(document.uri.fsPath);
+    const state = this.store.snapshot();
     return (
-      this.store
-        .snapshot()
-        .route?.nodes.filter(
+      state
+        .route?.nodes.slice(0, state.revealedRouteNodeCount)
+        .filter(
           (node) => normalizePath(node.location.path) === documentPath,
         ) ?? []
     );

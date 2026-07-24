@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { TokenUsageSnapshot } from "../ai/tokenUsage";
+import { shouldShowDebugEvidence } from "../core/debugEvidenceVisibility";
 import { normalizePath } from "../core/locations";
 import { SessionStore } from "../core/sessionStore";
 import { LinkedBreakpointState } from "../debug/breakpoints";
@@ -19,8 +19,7 @@ export interface RuntimeMapActions {
   runDebugCommand(command: "continue" | "stepInto" | "stepOver"): Promise<void>;
   configureModelProvider(): Promise<void>;
   modelProviderStatus(): { readonly label: string; readonly detail?: string };
-  tokenUsageSnapshot(): TokenUsageSnapshot;
-  resetProjectTokenUsage(): Promise<void>;
+  showConversationHistory(): Promise<void>;
 }
 
 interface WebviewMessage {
@@ -35,6 +34,7 @@ interface WebviewMessage {
   readonly diagnostics?: unknown;
   readonly enterDefaultPrevented?: unknown;
   readonly shiftEnterDefaultPrevented?: unknown;
+  readonly tab?: unknown;
 }
 
 interface InteractionMotionDiagnostics {
@@ -53,13 +53,12 @@ interface RenderedDiagnostics {
   readonly runtimeEvidenceGroupCount: number;
   readonly variablePreviewCount: number;
   readonly variablePreviewMaxLength: number;
-  readonly usageSectionCount: number;
-  readonly usageScopeCount: number;
-  readonly usageReportedCount: number;
-  readonly usageEstimatedCount: number;
-  readonly usageCacheCount: number;
-  readonly usageLastCacheDetailCount: number;
-  readonly usageResetButtonCount: number;
+  readonly visibleTabCount: number;
+  readonly pathTabVisible: boolean;
+  readonly stackTabVisible: boolean;
+  readonly variablesTabVisible: boolean;
+  readonly renderedRouteNodeCount: number;
+  readonly renderedExplorationContextCount: number;
   readonly composerShortcutText: string;
   readonly userMessageSurfaceDeclared: boolean;
   readonly userMessageSurfaceDistinct: boolean;
@@ -151,13 +150,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedRuntimeEvidenceGroupCount: number;
     readonly renderedVariablePreviewCount: number;
     readonly renderedVariablePreviewMaxLength: number;
-    readonly renderedUsageSectionCount: number;
-    readonly renderedUsageScopeCount: number;
-    readonly renderedUsageReportedCount: number;
-    readonly renderedUsageEstimatedCount: number;
-    readonly renderedUsageCacheCount: number;
-    readonly renderedUsageLastCacheDetailCount: number;
-    readonly renderedUsageResetButtonCount: number;
+    readonly visibleTabCount: number;
+    readonly pathTabVisible: boolean;
+    readonly stackTabVisible: boolean;
+    readonly variablesTabVisible: boolean;
+    readonly renderedRouteNodeCount: number;
+    readonly renderedExplorationContextCount: number;
     readonly renderedComposerShortcutText: string;
     readonly renderedUserMessageSurfaceDeclared: boolean;
     readonly renderedUserMessageSurfaceDistinct: boolean;
@@ -190,14 +188,13 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedVariablePreviewCount: this.renderedDiagnostics.variablePreviewCount,
       renderedVariablePreviewMaxLength:
         this.renderedDiagnostics.variablePreviewMaxLength,
-      renderedUsageSectionCount: this.renderedDiagnostics.usageSectionCount,
-      renderedUsageScopeCount: this.renderedDiagnostics.usageScopeCount,
-      renderedUsageReportedCount: this.renderedDiagnostics.usageReportedCount,
-      renderedUsageEstimatedCount: this.renderedDiagnostics.usageEstimatedCount,
-      renderedUsageCacheCount: this.renderedDiagnostics.usageCacheCount,
-      renderedUsageLastCacheDetailCount:
-        this.renderedDiagnostics.usageLastCacheDetailCount,
-      renderedUsageResetButtonCount: this.renderedDiagnostics.usageResetButtonCount,
+      visibleTabCount: this.renderedDiagnostics.visibleTabCount,
+      pathTabVisible: this.renderedDiagnostics.pathTabVisible,
+      stackTabVisible: this.renderedDiagnostics.stackTabVisible,
+      variablesTabVisible: this.renderedDiagnostics.variablesTabVisible,
+      renderedRouteNodeCount: this.renderedDiagnostics.renderedRouteNodeCount,
+      renderedExplorationContextCount:
+        this.renderedDiagnostics.renderedExplorationContextCount,
       renderedComposerShortcutText: this.renderedDiagnostics.composerShortcutText,
       renderedUserMessageSurfaceDeclared:
         this.renderedDiagnostics.userMessageSurfaceDeclared,
@@ -232,13 +229,23 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     return this.view.webview.postMessage({ type: "smokeComposer" });
   }
 
+  public async showTabForSmoke(tab: "overview" | "path" | "stack" | "variables"): Promise<boolean> {
+    const shown = await (this.view?.webview.postMessage({ type: "smokeTab", tab }) ??
+      Promise.resolve(false));
+    if (shown) {
+      this.postState();
+    }
+    return shown;
+  }
+
   private postState(): void {
     if (!this.view) {
       return;
     }
     const state = this.store.snapshot();
     const currentPause = this.store.selectedPause();
-    const routeNodes = state.route?.nodes ?? [];
+    const routeNodes =
+      state.route?.nodes.slice(0, state.revealedRouteNodeCount) ?? [];
     const selectedFrame =
       currentPause?.frames.find((frame) => frame.id === state.selectedFrameId) ??
       currentPause?.frames[0];
@@ -262,7 +269,9 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     const route = state.route
       ? {
           ...state.route,
-          nodes: state.route.nodes.map((node) => {
+          totalNodeCount: state.route.nodes.length,
+          canRevealMore: state.revealedRouteNodeCount < state.route.nodes.length,
+          nodes: routeNodes.map((node) => {
             const breakpointState = this.actions.breakpointState(node.location);
             return {
               ...node,
@@ -314,11 +323,17 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         requestPending: Boolean(state.requestKind || state.busyMessage),
         requestKind: state.requestKind,
         modelProvider: this.actions.modelProviderStatus(),
-        tokenUsage: this.actions.tokenUsageSnapshot(),
         debugging: Boolean(state.debugSessionId),
         workspaceOpen: Boolean(vscode.workspace.workspaceFolders?.length),
         chatMessages: state.chatMessages,
         contentMode: state.contentMode,
+        conversationId: state.conversationId,
+        conversationTitle: state.conversationTitle,
+        revealedRouteNodeCount: state.revealedRouteNodeCount,
+        debugEvidenceVisible: shouldShowDebugEvidence(
+          state,
+          (location) => this.actions.breakpointState(location) !== "none",
+        ),
       },
     });
   }
@@ -369,9 +384,11 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         await this.actions.configureModelProvider();
         this.postState();
         return;
-      case "resetUsage":
-        await this.actions.resetProjectTokenUsage();
-        this.postState();
+      case "showConversationHistory":
+        await this.actions.showConversationHistory();
+        return;
+      case "revealNextRouteNode":
+        this.store.revealNextRouteNode();
         return;
       case "openFolder":
         await vscode.commands.executeCommand("vscode.openFolder");
@@ -441,11 +458,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
 
   private releaseManagedBreakpointsIfIdle(): void {
     const state = this.store.snapshot();
-    if (
-      !state.debugSessionId &&
-      state.requestKind !== "debug" &&
-      this.actions.canReleaseManagedBreakpoints()
-    ) {
+    if (state.requestKind !== "debug" && this.actions.canReleaseManagedBreakpoints()) {
       this.actions.releaseManagedBreakpoints();
     }
   }
@@ -472,13 +485,12 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     runtimeEvidenceGroupCount: 0,
     variablePreviewCount: 0,
     variablePreviewMaxLength: 0,
-    usageSectionCount: 0,
-    usageScopeCount: 0,
-    usageReportedCount: 0,
-    usageEstimatedCount: 0,
-    usageCacheCount: 0,
-    usageLastCacheDetailCount: 0,
-    usageResetButtonCount: 0,
+    visibleTabCount: 1,
+    pathTabVisible: false,
+    stackTabVisible: false,
+    variablesTabVisible: false,
+    renderedRouteNodeCount: 0,
+    renderedExplorationContextCount: 0,
     composerShortcutText: "",
     userMessageSurfaceDeclared: false,
     userMessageSurfaceDistinct: false,
@@ -504,15 +516,14 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
     runtimeEvidenceGroupCount: numberDiagnostic(diagnostics.runtimeEvidenceGroupCount),
     variablePreviewCount: numberDiagnostic(diagnostics.variablePreviewCount),
     variablePreviewMaxLength: numberDiagnostic(diagnostics.variablePreviewMaxLength),
-    usageSectionCount: numberDiagnostic(diagnostics.usageSectionCount),
-    usageScopeCount: numberDiagnostic(diagnostics.usageScopeCount),
-    usageReportedCount: numberDiagnostic(diagnostics.usageReportedCount),
-    usageEstimatedCount: numberDiagnostic(diagnostics.usageEstimatedCount),
-    usageCacheCount: numberDiagnostic(diagnostics.usageCacheCount),
-    usageLastCacheDetailCount: numberDiagnostic(
-      diagnostics.usageLastCacheDetailCount,
+    visibleTabCount: numberDiagnostic(diagnostics.visibleTabCount),
+    pathTabVisible: diagnostics.pathTabVisible === true,
+    stackTabVisible: diagnostics.stackTabVisible === true,
+    variablesTabVisible: diagnostics.variablesTabVisible === true,
+    renderedRouteNodeCount: numberDiagnostic(diagnostics.renderedRouteNodeCount),
+    renderedExplorationContextCount: numberDiagnostic(
+      diagnostics.renderedExplorationContextCount,
     ),
-    usageResetButtonCount: numberDiagnostic(diagnostics.usageResetButtonCount),
     composerShortcutText:
       typeof diagnostics.composerShortcutText === "string"
         ? diagnostics.composerShortcutText

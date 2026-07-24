@@ -9,6 +9,7 @@ export const runtimeMapScript = String.raw`
       composerMode: document.getElementById('composer-mode'),
       composerShortcut: document.getElementById('composer-shortcut'),
       configureModel: document.getElementById('configure-model'),
+      conversationSwitcher: document.getElementById('conversation-switcher'),
       modelProviderLabel: document.getElementById('model-provider-label'),
       pathCount: document.getElementById('path-count'),
       pauseRail: document.getElementById('pause-rail'),
@@ -23,6 +24,8 @@ export const runtimeMapScript = String.raw`
     };
     let activeTab = 'overview';
     let requestPending = false;
+    let renderedChatMessageCount = 0;
+    let renderedConversationId;
     let currentState = {
       route: undefined,
       pauses: [],
@@ -35,15 +38,20 @@ export const runtimeMapScript = String.raw`
       requestPending: false,
       requestKind: undefined,
       modelProvider: { label: 'VS Code 内置模型' },
-      tokenUsage: undefined,
       debugging: false,
       workspaceOpen: true,
       chatMessages: [],
       contentMode: undefined,
+      conversationId: undefined,
+      conversationTitle: '新会话',
+      revealedRouteNodeCount: 0,
     };
 
     document.getElementById('locate').addEventListener('click', submitQuestion);
     elements.configureModel.addEventListener('click', () => vscode.postMessage({ type: 'configureModel' }));
+    elements.conversationSwitcher.addEventListener('click', () => {
+      vscode.postMessage({ type: 'showConversationHistory' });
+    });
     elements.question.addEventListener('keydown', (event) => {
       if (
         event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229
@@ -63,7 +71,7 @@ export const runtimeMapScript = String.raw`
     });
     elements.tabs.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      const tabs = Array.from(elements.tabs.querySelectorAll('[role="tab"]'));
+      const tabs = Array.from(elements.tabs.querySelectorAll('[role="tab"]:not([hidden])'));
       const currentIndex = tabs.indexOf(event.target);
       if (currentIndex < 0) return;
       event.preventDefault();
@@ -76,7 +84,17 @@ export const runtimeMapScript = String.raw`
 
     window.addEventListener('message', (event) => {
       if (event.data?.type === 'state') {
-        currentState = event.data.state;
+        const nextState = event.data.state;
+        const nextChatMessageCount = (nextState.chatMessages || []).length;
+        if (
+          (renderedConversationId && nextState.conversationId !== renderedConversationId) ||
+          nextChatMessageCount > renderedChatMessageCount
+        ) {
+          activeTab = 'overview';
+        }
+        renderedConversationId = nextState.conversationId;
+        renderedChatMessageCount = nextChatMessageCount;
+        currentState = nextState;
         render(currentState);
         vscode.postMessage({
           type: 'renderedState',
@@ -94,13 +112,12 @@ export const runtimeMapScript = String.raw`
               ...Array.from(elements.content.querySelectorAll('.variable-preview-value'))
                 .map((element) => element.textContent.length),
             ),
-            usageSectionCount: elements.content.querySelectorAll('.token-usage').length,
-            usageScopeCount: elements.content.querySelectorAll('[data-usage-scope]').length,
-            usageReportedCount: elements.content.querySelectorAll('.usage-source.reported').length,
-            usageEstimatedCount: elements.content.querySelectorAll('.usage-source.estimated').length,
-            usageCacheCount: elements.content.querySelectorAll('.usage-cache').length,
-            usageLastCacheDetailCount: elements.content.querySelectorAll('.usage-last .usage-cache-detail').length,
-            usageResetButtonCount: elements.content.querySelectorAll('.usage-reset').length,
+            visibleTabCount: elements.tabs.querySelectorAll('[role="tab"]:not([hidden])').length,
+            pathTabVisible: !document.getElementById('tab-path').hidden,
+            stackTabVisible: !document.getElementById('tab-stack').hidden,
+            variablesTabVisible: !document.getElementById('tab-variables').hidden,
+            renderedRouteNodeCount: elements.content.querySelectorAll('.path-node').length,
+            renderedExplorationContextCount: elements.content.querySelectorAll('.exploration-context').length,
             composerShortcutText: elements.composerShortcut.textContent,
             userMessageSurfaceDeclared: Boolean(
               getComputedStyle(document.documentElement)
@@ -123,6 +140,9 @@ export const runtimeMapScript = String.raw`
         });
       } else if (event.data?.type === 'smokeComposer') {
         runComposerSmoke();
+      } else if (event.data?.type === 'smokeTab') {
+        activeTab = event.data.tab;
+        render(currentState);
       }
     });
 
@@ -168,8 +188,10 @@ export const runtimeMapScript = String.raw`
       const variables = state.variables || [];
       const pauses = state.pauses || [];
       const chatMessages = state.chatMessages || [];
-      elements.sessionTitle.textContent = route?.question || 'Python 项目';
-      elements.pathCount.textContent = route ? String(route.nodes.length) : '';
+      elements.sessionTitle.textContent = state.conversationTitle || '新会话';
+      elements.pathCount.textContent = route
+        ? String(route.nodes.length) + '/' + String(route.totalNodeCount || route.nodes.length)
+        : '';
       elements.stackCount.textContent = frames.length ? String(frames.length) : '';
       elements.variableCount.textContent = variables.length ? String(variables.length) : '';
       const modelProvider = state.modelProvider || { label: 'VS Code 内置模型' };
@@ -179,13 +201,11 @@ export const runtimeMapScript = String.raw`
       elements.configureModel.title = '当前模型：' + elements.modelProviderLabel.textContent + '；点击配置';
       elements.configureModel.disabled = requestPending;
       updateStatus(state);
-      updateTabs();
+      updateTabs(state);
       renderPauseRail(state);
       elements.content.replaceChildren();
       const view = document.createElement('div');
       view.className = 'view';
-      const paused = state.debugStatus === 'paused' && frames.length > 0;
-      const livePause = selectedPauseIsLive(state);
       elements.composerMode.textContent = !state.workspaceOpen
         ? '需要打开 Python 项目'
         : route || chatMessages.length ? '继续聊天或询问代码路径' : '聊天或询问代码路径';
@@ -200,12 +220,16 @@ export const runtimeMapScript = String.raw`
       elements.question.disabled = requestPending || !state.workspaceOpen;
       updateSendAvailability();
       elements.composerInner.classList.toggle('busy', requestPending);
-      if (state.requestPending || state.busyMessage) renderBusy(view, state.busyMessage, state);
+      if (state.requestPending || state.busyMessage) {
+        if (activeTab === 'overview' && chatMessages.length) {
+          renderOverview(view, state);
+        }
+        renderBusy(view, state.busyMessage, state);
+      }
       else if (activeTab === 'path') renderPath(view, route);
       else if (activeTab === 'stack') renderStack(view, state);
       else if (activeTab === 'variables') renderVariables(view, state);
       else renderOverview(view, state);
-      renderTokenUsage(view, state.tokenUsage);
       elements.content.appendChild(view);
     }
 
@@ -247,8 +271,24 @@ export const runtimeMapScript = String.raw`
         (state.pauses || []).some((pause) => pause.selected && pause.id === state.livePauseId);
     }
 
-    function updateTabs() {
+    function updateTabs(state) {
+      const routeVisible = Boolean(state.route);
+      const debugEvidenceVisible = Boolean(state.debugEvidenceVisible);
+      document.getElementById('tab-path').hidden = !routeVisible;
+      document.getElementById('tab-stack').hidden = !debugEvidenceVisible;
+      document.getElementById('tab-variables').hidden = !debugEvidenceVisible;
+      if (
+        (activeTab === 'path' && !routeVisible) ||
+        ((activeTab === 'stack' || activeTab === 'variables') && !debugEvidenceVisible)
+      ) {
+        activeTab = routeVisible ? 'path' : 'overview';
+      }
       elements.tabs.querySelectorAll('[data-tab]').forEach((tab) => {
+        if (tab.hidden) {
+          tab.setAttribute('aria-selected', 'false');
+          tab.tabIndex = -1;
+          return;
+        }
         const selected = tab.dataset.tab === activeTab;
         tab.setAttribute('aria-selected', String(selected));
         tab.tabIndex = selected ? 0 : -1;
@@ -275,11 +315,6 @@ export const runtimeMapScript = String.raw`
       } else if (state.contentMode === 'chat') {
         elements.statusDot.classList.add('primary');
         elements.statusLabel.textContent = '对话已更新';
-      } else if (state.contentMode === 'message' && state.tutorMessage) {
-        elements.statusDot.classList.add('primary');
-        elements.statusLabel.textContent = state.tutorMessage.kind === 'error'
-          ? '请求未完成'
-          : '需要你的操作';
       } else if (state.tutorMessage?.kind === 'pause-error') {
         elements.statusDot.classList.add('primary');
         elements.statusLabel.textContent = '已保留运行时证据 · 模型解释可重试';
@@ -299,7 +334,9 @@ export const runtimeMapScript = String.raw`
         elements.statusLabel.textContent = pauses.length ? '调试运行中 · 等待下一次暂停' : '调试已连接，等待命中断点';
       } else if (state.route) {
         elements.statusDot.classList.add('primary');
-        elements.statusLabel.textContent = '已规划 ' + state.route.nodes.length + ' 个关键节点';
+        elements.statusLabel.textContent = '代码探索 · 已展开 ' +
+          state.route.nodes.length + '/' +
+          (state.route.totalNodeCount || state.route.nodes.length);
       } else {
         elements.statusLabel.textContent = '等待代码问题';
       }
@@ -347,172 +384,21 @@ export const runtimeMapScript = String.raw`
     }
 
     function renderOverview(root, state) {
-      const route = state.route;
-      const pauses = state.pauses || [];
-      const frames = state.frames || [];
-      if (state.contentMode === 'message' && state.tutorMessage) {
-        renderTutorMessage(root, state);
-      } else if (state.contentMode === 'chat' && (state.chatMessages || []).length) {
-        renderConversation(root, state.chatMessages, state);
-      } else if (state.debugStatus === 'ended') {
-        renderSessionEnded(root, state);
-      } else if (state.debugStatus === 'paused' && frames.length) {
-        renderPausedOverview(root, state);
-      } else if (state.debugStatus === 'running') {
-        renderRunningOverview(root, state);
-      } else if (route) {
-        renderRouteReady(root, state);
+      const messages = state.chatMessages || [];
+      if (messages.length) {
+        renderConversation(root, state.chatMessages);
       } else {
         renderEmpty(root, state);
       }
-    }
-
-    function renderTokenUsage(root, snapshot) {
-      if (!snapshot || !hasTokenUsage(snapshot)) return;
-      const section = document.createElement('section');
-      section.className = 'token-usage';
-      section.setAttribute('aria-label', '模型用量');
-
-      const head = document.createElement('div');
-      head.className = 'usage-head';
-      const headingCopy = document.createElement('div');
-      const title = document.createElement('h2');
-      title.textContent = '模型用量';
-      const subtitle = document.createElement('p');
-      subtitle.textContent = '报告值与本地估算分开累计';
-      headingCopy.append(title, subtitle);
-      const reset = document.createElement('button');
-      reset.type = 'button';
-      reset.className = 'text-action usage-reset';
-      reset.textContent = '重置项目累计';
-      reset.addEventListener('click', () => vscode.postMessage({ type: 'resetUsage' }));
-      head.append(headingCopy, reset);
-      section.appendChild(head);
-
-      if (snapshot.last) {
-        const last = document.createElement('div');
-        last.className = 'usage-last';
-        last.dataset.usageScope = 'last';
-        const lastMeta = document.createElement('div');
-        lastMeta.className = 'usage-last-meta';
-        const lastLabel = document.createElement('span');
-        lastLabel.textContent = '最近一次 · ' + requestKindLabel(snapshot.last.requestKind);
-        const source = document.createElement('span');
-        source.className = 'usage-source ' + snapshot.last.usage.source;
-        source.textContent = snapshot.last.usage.source === 'reported' ? '厂商报告' : '估算';
-        lastMeta.append(lastLabel, source);
-        const model = document.createElement('div');
-        model.className = 'usage-model';
-        model.textContent = snapshot.last.model
-          ? snapshot.last.provider + ' · ' + snapshot.last.model
-          : snapshot.last.provider;
-        const metrics = document.createElement('div');
-        metrics.className = 'usage-last-metrics';
-        metrics.textContent = usageMetricsText(snapshot.last.usage);
-        last.append(lastMeta, model, metrics);
-        const cache = document.createElement('div');
-        cache.className = 'usage-cache usage-cache-detail';
-        cache.textContent = usageCacheText(snapshot.last.usage);
-        last.appendChild(cache);
-        section.appendChild(last);
+      if (
+        state.tutorMessage &&
+        (state.tutorMessage.kind === 'error' || state.tutorMessage.kind === 'system')
+      ) {
+        renderTutorMessage(root, state);
       }
-
-      const scopes = document.createElement('div');
-      scopes.className = 'usage-scopes';
-      appendUsageScope(scopes, '当前会话', 'session', snapshot.session);
-      appendUsageScope(scopes, '当前项目', 'project', snapshot.project);
-      section.appendChild(scopes);
-      const note = document.createElement('p');
-      note.className = 'usage-note';
-      note.textContent = '估算值仅用于观察上下文规模，不等同于厂商账单。';
-      section.appendChild(note);
-      root.appendChild(section);
-    }
-
-    function appendUsageScope(root, label, scope, totals) {
-      const row = document.createElement('div');
-      row.className = 'usage-scope';
-      row.dataset.usageScope = scope;
-      const name = document.createElement('div');
-      name.className = 'usage-scope-name';
-      name.textContent = label;
-      const values = document.createElement('div');
-      values.className = 'usage-scope-values';
-      appendUsageSource(values, 'reported', '厂商报告', totals?.reported);
-      appendUsageSource(values, 'estimated', '估算', totals?.estimated);
-      if (!values.childElementCount) {
-        const empty = document.createElement('span');
-        empty.className = 'usage-empty';
-        empty.textContent = '暂无模型请求';
-        values.appendChild(empty);
+      if (state.route) {
+        renderExplorationContext(root, state);
       }
-      row.append(name, values);
-      root.appendChild(row);
-    }
-
-    function appendUsageSource(root, source, label, counts) {
-      if (!hasTokenCounts(counts)) return;
-      const line = document.createElement('div');
-      line.className = 'usage-source-line';
-      const sourceLabel = document.createElement('span');
-      sourceLabel.className = 'usage-source ' + source;
-      sourceLabel.textContent = label;
-      const metrics = document.createElement('span');
-      metrics.textContent = usageMetricsText(counts);
-      line.append(sourceLabel, metrics);
-      if (counts.cacheReadTokens > 0 || counts.cacheWriteTokens > 0) {
-        const cache = document.createElement('span');
-        cache.className = 'usage-cache';
-        cache.textContent = usageCacheText(counts);
-        line.appendChild(cache);
-      }
-      root.appendChild(line);
-    }
-
-    function usageMetricsText(counts) {
-      return '输入 ' + formatTokenCount(counts.inputTokens) +
-        ' · 输出 ' + formatTokenCount(counts.outputTokens) +
-        ' · 总计 ' + formatTokenCount(counts.totalTokens);
-    }
-
-    function usageCacheText(counts) {
-      const parts = ['缓存读 ' + formatTokenCount(counts.cacheReadTokens)];
-      if (counts.cacheReadTokens > 0) {
-        const ratio = counts.inputTokens > 0
-          ? Math.round((counts.cacheReadTokens / counts.inputTokens) * 100)
-          : 0;
-        if (ratio > 0) parts[0] += ' · ' + ratio + '%';
-      }
-      if (counts.cacheWriteTokens > 0) {
-        parts.push('缓存写 ' + formatTokenCount(counts.cacheWriteTokens));
-      }
-      return parts.join(' · ');
-    }
-
-    function formatTokenCount(value) {
-      return new Intl.NumberFormat('zh-CN').format(Number(value) || 0);
-    }
-
-    function hasTokenUsage(snapshot) {
-      return Boolean(snapshot.last) ||
-        hasTokenCounts(snapshot.session?.reported) ||
-        hasTokenCounts(snapshot.session?.estimated) ||
-        hasTokenCounts(snapshot.project?.reported) ||
-        hasTokenCounts(snapshot.project?.estimated);
-    }
-
-    function hasTokenCounts(counts) {
-      return Boolean(counts && (
-        counts.inputTokens || counts.outputTokens || counts.totalTokens ||
-        counts.cacheReadTokens || counts.cacheWriteTokens
-      ));
-    }
-
-    function requestKindLabel(kind) {
-      if (kind === 'route') return '路径定位';
-      if (kind === 'pause') return '暂停解释';
-      if (kind === 'connection-test') return '连接测试';
-      return '问题回答';
     }
 
     function renderTutorMessage(root, state) {
@@ -534,7 +420,7 @@ export const runtimeMapScript = String.raw`
       }
     }
 
-    function renderConversation(root, messages, state) {
+    function renderConversation(root, messages) {
       const conversation = document.createElement('section');
       conversation.className = 'conversation';
       messages.forEach((message) => {
@@ -550,10 +436,36 @@ export const runtimeMapScript = String.raw`
         turn.appendChild(body);
         conversation.appendChild(turn);
       });
-      if (state.debugStatus === 'paused' && (state.frames || []).length) {
-        appendDebugActions(conversation, state);
-      }
       root.appendChild(conversation);
+    }
+
+    function renderExplorationContext(root, state) {
+      const route = state.route;
+      const revealed = route.nodes.length;
+      const total = route.totalNodeCount || revealed;
+      const section = document.createElement('section');
+      section.className = 'exploration-context';
+      const copy = document.createElement('div');
+      copy.className = 'exploration-copy';
+      const eyebrow = document.createElement('span');
+      eyebrow.className = 'exploration-eyebrow';
+      eyebrow.textContent = '当前代码探索';
+      const title = document.createElement('h2');
+      title.textContent = route.question;
+      const detail = document.createElement('p');
+      detail.textContent = '已展开 ' + revealed + '/' + total + ' 个关键位置。先读当前证据，再决定是否继续深入。';
+      copy.append(eyebrow, title, detail);
+      const actions = document.createElement('div');
+      actions.className = 'exploration-actions';
+      actions.appendChild(actionButton('查看关键位置', 'primary', () => switchTab('path')));
+      actions.appendChild(actionButton('追问这个方向', 'quiet', focusExplorationQuestion));
+      if (route.canRevealMore) {
+        actions.appendChild(actionButton('继续下一处', 'quiet', () => {
+          vscode.postMessage({ type: 'revealNextRouteNode' });
+        }));
+      }
+      section.append(copy, actions);
+      root.appendChild(section);
     }
 
     function renderRichText(root, source) {
@@ -659,106 +571,6 @@ export const runtimeMapScript = String.raw`
       root.appendChild(empty);
     }
 
-    function renderRouteReady(root, state) {
-      const route = state.route;
-      const heading = sectionHeading('阅读路线已准备', route.nodes.length + ' 个关键节点');
-      const summary = document.createElement('p');
-      summary.className = 'lesson-copy';
-      summary.textContent = state.tutorMessage?.kind === 'route'
-        ? state.tutorMessage.text
-        : route.summary;
-      const evidence = document.createElement('div');
-      evidence.className = 'evidence';
-      const linked = route.nodes.filter((node) => node.breakpoint).length;
-      evidence.innerHTML = '<div class="evidence-head"><div class="evidence-title"><span class="evidence-dot"></span>调试准备</div></div>';
-      const prep = document.createElement('p');
-      prep.className = 'evidence-copy';
-      prep.textContent = linked
-        ? '已有 ' + linked + ' 个节点联动断点，可以开始教学调试。'
-        : '先到“执行路径”选择关键节点并联动断点，再开始调试。';
-      evidence.appendChild(prep);
-      const actions = document.createElement('div');
-      actions.className = 'action-row';
-      actions.append(
-        actionButton('查看执行路径', 'primary', () => switchTab('path')),
-        actionButton('开始教学调试', '', () => vscode.postMessage({ type: 'startDebug', question: route.question })),
-      );
-      root.append(heading, summary, evidence, actions);
-    }
-
-    function renderRunningOverview(root, state) {
-      const heading = sectionHeading('调试运行中', (state.pauses || []).length ? '等待下一次断点或单步暂停' : '等待第一个断点');
-      const copy = document.createElement('p');
-      copy.className = 'lesson-copy';
-      copy.textContent = (state.pauses || []).length
-        ? '上一份运行时快照仍保留在调用栈和变量视图中；新的暂停到来后，当前步骤会自动更新。'
-        : 'Code Cat 已经连接 debugpy。命中联动断点后，这里会显示当前步骤、真实源码、变量和可用的单步操作。';
-      const actions = document.createElement('div');
-      actions.className = 'action-row';
-      if ((state.frames || []).length) {
-        actions.appendChild(actionButton('查看上一份调用栈', '', () => switchTab('stack')));
-      }
-      if (state.route) {
-        actions.appendChild(actionButton('查看执行路径', 'primary', () => switchTab('path')));
-      }
-      root.append(heading, copy, actions);
-    }
-
-    function renderPausedOverview(root, state) {
-      const route = state.route;
-      const frames = state.frames || [];
-      const variables = state.variables || [];
-      const frame = frames[0];
-      const livePause = selectedPauseIsLive(state);
-      const node = currentRouteNode(route, frame);
-      const nodeIndex = route && node ? route.nodes.findIndex((candidate) => candidate.id === node.id) : -1;
-      const reading = document.createElement('article');
-      reading.className = 'pause-reading';
-      const heading = document.createElement('div');
-      heading.className = 'step-label';
-      const stepText = document.createElement('span');
-      const stepTitle = nodeIndex >= 0 ? '第 ' + (nodeIndex + 1) + ' 步 · ' + node.title : '运行时断点';
-      stepText.textContent = livePause ? stepTitle : '历史快照 · ' + stepTitle;
-      heading.appendChild(stepText);
-      const source = document.createElement('button');
-      source.type = 'button';
-      source.className = 'source-link';
-      const sourceName = document.createElement('span');
-      sourceName.className = 'source-name';
-      sourceName.textContent = frame.fileLabel;
-      const sourceArrow = document.createElement('span');
-      sourceArrow.textContent = '→';
-      source.append(sourceName, sourceArrow);
-      source.addEventListener('click', () => {
-        vscode.postMessage({ type: 'selectFrame', frameId: frame.id });
-      });
-      const explanation = pauseExplanation(state, node, livePause);
-      const sections = document.createElement('div');
-      sections.className = 'explanation-sections';
-      sections.append(
-        explanationSection('当前发生什么', explanation.whatHappened),
-        explanationSection('为什么重要', explanation.whyItMatters),
-        explanationSection('下一步看什么', explanation.inspectNext),
-      );
-      reading.append(heading, source, sections);
-      if (state.tutorMessage?.kind === 'pause-error') {
-        const explanationError = document.createElement('div');
-        explanationError.className = 'notice pause-explanation-error';
-        explanationError.textContent = '模型解释未按约定结构返回。当前仍保留真实运行时证据；你可以稍后重新解释。详情：' + state.tutorMessage.text;
-        reading.appendChild(explanationError);
-      }
-      reading.appendChild(runtimeEvidence(frames, variables));
-      appendDebugActions(reading, state);
-      const tags = document.createElement('div');
-      tags.className = 'tags';
-      tags.append(
-        tag(livePause ? '当前暂停' : '历史快照', livePause ? 'current' : ''),
-        tag(frames.length + ' 层调用', ''),
-      );
-      reading.appendChild(tags);
-      root.appendChild(reading);
-    }
-
     function pauseExplanation(state, node, livePause) {
       if (state.tutorMessage?.kind === 'pause') {
         return state.tutorMessage.explanation;
@@ -784,90 +596,6 @@ export const runtimeMapScript = String.raw`
       renderRichText(body, text);
       section.append(heading, body);
       return section;
-    }
-
-    function runtimeEvidence(frames, variables) {
-      const evidence = document.createElement('section');
-      evidence.className = 'runtime-evidence';
-      const heading = sectionHeading('运行时证据', '来自本次暂停的顶层栈帧，用来验证代码路径');
-      const grid = document.createElement('div');
-      grid.className = 'runtime-evidence-grid';
-      grid.append(runtimeStackEvidence(frames), runtimeVariableEvidence(variables));
-      evidence.append(heading, grid);
-      return evidence;
-    }
-
-    function runtimeStackEvidence(frames) {
-      const group = evidenceGroup('调用路径', frames.length ? '查看完整调用栈' : '暂无调用栈', () => switchTab('stack'));
-      const list = document.createElement('div');
-      list.className = 'stack-preview';
-      frames.slice(0, 3).forEach((frame, index) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'stack-preview-row';
-        const order = document.createElement('span');
-        order.className = 'stack-preview-order';
-        order.textContent = '#' + index;
-        const name = document.createElement('span');
-        name.className = 'stack-preview-name';
-        name.textContent = frame.displayName;
-        const file = document.createElement('span');
-        file.className = 'stack-preview-file';
-        file.textContent = frame.fileLabel;
-        button.append(order, name, file);
-        button.addEventListener('click', () => vscode.postMessage({ type: 'selectFrame', frameId: frame.id }));
-        list.appendChild(button);
-      });
-      if (!frames.length) list.appendChild(emptyNotice('当前没有可用的调用栈。'));
-      group.appendChild(list);
-      return group;
-    }
-
-    function runtimeVariableEvidence(variables) {
-      const group = evidenceGroup('顶层栈帧变量', variables.length ? '查看全部变量' : '暂无变量', () => switchTab('variables'));
-      const list = document.createElement('div');
-      list.className = 'variable-preview-list';
-      variables.slice(0, 4).forEach((variable) => {
-        const row = document.createElement('div');
-        row.className = 'variable-preview-row';
-        const key = document.createElement('div');
-        key.className = 'variable-preview-key';
-        const name = document.createElement('code');
-        name.textContent = variable.name;
-        const type = document.createElement('span');
-        type.textContent = variable.type || '未知类型';
-        key.append(name, type);
-        const value = document.createElement('code');
-        value.className = 'variable-preview-value';
-        value.textContent = compactVariableValue(variable.value);
-        row.append(key, value);
-        list.appendChild(row);
-      });
-      if (!variables.length) list.appendChild(emptyNotice('当前暂停没有可展示的顶层变量。'));
-      group.appendChild(list);
-      return group;
-    }
-
-    function evidenceGroup(title, actionLabel, onAction) {
-      const group = document.createElement('section');
-      group.className = 'runtime-evidence-group';
-      const head = document.createElement('div');
-      head.className = 'runtime-evidence-group-head';
-      const heading = document.createElement('h3');
-      heading.textContent = title;
-      const action = document.createElement('button');
-      action.type = 'button';
-      action.className = 'text-action';
-      action.textContent = actionLabel;
-      action.addEventListener('click', onAction);
-      head.append(heading, action);
-      group.appendChild(head);
-      return group;
-    }
-
-    function compactVariableValue(value) {
-      const text = String(value || '');
-      return text.length <= 120 ? text : text.slice(0, 119) + '…';
     }
 
     function appendDebugActions(root, state) {
@@ -899,14 +627,18 @@ export const runtimeMapScript = String.raw`
     }
 
     function renderPath(root, route) {
-      root.appendChild(sectionHeading('代码阅读路径', route ? route.nodes.length + ' 个候选节点' : '尚未生成路径'));
+      const total = route?.totalNodeCount || route?.nodes.length || 0;
+      root.appendChild(sectionHeading(
+        '代码阅读路径',
+        route ? '已展开 ' + route.nodes.length + '/' + total + ' 个关键位置' : '尚未生成路径',
+      ));
       if (!route) {
-        root.appendChild(emptyNotice('先在底部输入一个项目问题，Code Cat 会生成 3–8 个候选阅读节点。'));
+        root.appendChild(emptyNotice('先在底部提出一个具体的代码问题，路径会在确有代码探索目标后出现。'));
         return;
       }
       const summary = document.createElement('div');
       summary.className = 'route-summary';
-      summary.textContent = route.summary;
+      summary.textContent = '这不是完整调用链。先从当前关键位置验证你的问题，再按兴趣继续展开。';
       const legend = document.createElement('div');
       legend.className = 'legend';
       legend.innerHTML = '<span class="legend-item"><span class="legend-swatch current"></span>当前</span><span class="legend-item"><span class="legend-swatch executed"></span>已执行</span><span class="legend-item"><span class="legend-swatch breakpoint"></span>断点</span><span class="legend-item"><span class="legend-swatch"></span>候选</span>';
@@ -917,6 +649,20 @@ export const runtimeMapScript = String.raw`
       route.nodes.forEach((node, index) => flow.appendChild(pathNode(node, index)));
       scroll.appendChild(flow);
       root.append(summary, legend, scroll);
+      if (route.canRevealMore) {
+        const actions = document.createElement('div');
+        actions.className = 'action-row';
+        actions.appendChild(actionButton('继续下一处', 'primary', () => {
+          vscode.postMessage({ type: 'revealNextRouteNode' });
+        }));
+        actions.appendChild(actionButton('先追问感兴趣的内容', 'quiet', focusExplorationQuestion));
+        root.appendChild(actions);
+      } else {
+        const complete = document.createElement('p');
+        complete.className = 'path-complete';
+        complete.textContent = '已展开当前探索规划。你可以在对话中追问其中任一位置，或选择位置设置教学断点。';
+        root.appendChild(complete);
+      }
     }
 
     function pathNode(node, index) {
@@ -959,9 +705,10 @@ export const runtimeMapScript = String.raw`
       const frames = state.frames || [];
       root.appendChild(sectionHeading('调用栈', frames.length ? frames.length + ' 层真实调用' : '等待调试器暂停'));
       if (!frames.length) {
-        root.appendChild(emptyNotice('命中断点后，这里会按调试器顺序显示真实调用栈。'));
+        root.appendChild(emptyNotice('已选择教学断点。开始调试并命中后，这里才会显示真实调用栈。'));
         return;
       }
+      renderPauseGuidance(root, state);
       const list = document.createElement('div');
       list.className = 'stack-list';
       frames.forEach((frame) => {
@@ -992,6 +739,47 @@ export const runtimeMapScript = String.raw`
       const actions = document.createElement('div');
       appendDebugActions(actions, state);
       root.appendChild(actions);
+    }
+
+    function renderPauseGuidance(root, state) {
+      const route = state.route;
+      const frames = state.frames || [];
+      const frame = frames[0];
+      const livePause = selectedPauseIsLive(state);
+      const node = currentRouteNode(route, frame);
+      const nodeIndex = route && node
+        ? route.nodes.findIndex((candidate) => candidate.id === node.id)
+        : -1;
+      const reading = document.createElement('article');
+      reading.className = 'pause-guidance';
+      const label = document.createElement('div');
+      label.className = 'step-label';
+      label.textContent = nodeIndex >= 0
+        ? (livePause ? '当前暂停' : '历史快照') + ' · 第 ' + (nodeIndex + 1) + ' 处'
+        : (livePause ? '当前暂停' : '历史快照');
+      const source = document.createElement('button');
+      source.type = 'button';
+      source.className = 'source-link';
+      source.textContent = frame.fileLabel + ' →';
+      source.addEventListener('click', () => {
+        vscode.postMessage({ type: 'selectFrame', frameId: frame.id });
+      });
+      const explanation = pauseExplanation(state, node, livePause);
+      const sections = document.createElement('div');
+      sections.className = 'explanation-sections';
+      sections.append(
+        explanationSection('当前发生什么', explanation.whatHappened),
+        explanationSection('为什么重要', explanation.whyItMatters),
+        explanationSection('下一步看什么', explanation.inspectNext),
+      );
+      reading.append(label, source, sections);
+      if (state.tutorMessage?.kind === 'pause-error') {
+        const error = document.createElement('div');
+        error.className = 'notice pause-explanation-error';
+        error.textContent = '解释未按结构返回；真实调用栈仍然保留。' + state.tutorMessage.text;
+        reading.appendChild(error);
+      }
+      root.appendChild(reading);
     }
 
     function renderVariables(root, state) {
@@ -1025,29 +813,6 @@ export const runtimeMapScript = String.raw`
       const actions = document.createElement('div');
       appendDebugActions(actions, state);
       root.appendChild(actions);
-    }
-
-    function renderSessionEnded(root, state) {
-      const route = state.route;
-      const pauses = state.pauses || [];
-      const executed = route ? route.nodes.filter((node) => node.executed).length : 0;
-      const complete = document.createElement('section');
-      complete.className = 'complete';
-      complete.innerHTML = '<div class="complete-mark">✓</div><h2>调试已结束</h2><p>下面只汇总本次输入实际收集到的运行时证据。</p>';
-      const stats = document.createElement('div');
-      stats.className = 'complete-stats';
-      stats.append(
-        stat('规划候选节点', route ? route.nodes.length : 0),
-        stat('实际暂停次数', pauses.length),
-        stat('运行时命中候选节点', executed),
-        stat('所选快照调用栈深度', state.frames?.length || 0),
-      );
-      const actions = document.createElement('div');
-      actions.className = 'action-row';
-      actions.style.justifyContent = 'center';
-      actions.appendChild(actionButton('查看执行路径', 'primary', () => switchTab('path')));
-      complete.append(stats, actions);
-      root.appendChild(complete);
     }
 
     function currentRouteNode(route, frame) {
@@ -1104,24 +869,10 @@ export const runtimeMapScript = String.raw`
       return button;
     }
 
-    function tag(label, variant) {
-      const value = document.createElement('span');
-      value.className = 'tag' + (variant ? ' ' + variant : '');
-      value.textContent = label;
-      return value;
-    }
-
-    function stat(label, value) {
-      const row = document.createElement('div');
-      row.className = 'stat';
-      const name = document.createElement('span');
-      name.className = 'stat-label';
-      name.textContent = label;
-      const count = document.createElement('span');
-      count.className = 'stat-value';
-      count.textContent = String(value);
-      row.append(name, count);
-      return row;
+    function focusExplorationQuestion() {
+      switchTab('overview');
+      elements.question.placeholder = '你对这条路径的哪一部分感兴趣？';
+      elements.question.focus();
     }
 
     function switchTab(tab) {

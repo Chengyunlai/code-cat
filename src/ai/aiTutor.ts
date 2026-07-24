@@ -41,7 +41,7 @@ const ROUTE_NODE_SCHEMA =
 const PAUSE_EXPLANATION_SCHEMA =
   '{"whatHappened":"...","whyItMatters":"...","inspectNext":"..."}';
 const MAX_CHAT_ANSWER_LENGTH = 8_000;
-const MAX_ROUTE_SUMMARY_LENGTH = 1_200;
+const MAX_ROUTE_SUMMARY_LENGTH = 280;
 const MAX_ROUTE_NODE_TITLE_LENGTH = 120;
 const MAX_ROUTE_NODE_SYMBOL_LENGTH = 200;
 const MAX_ROUTE_NODE_REASON_LENGTH = 600;
@@ -272,7 +272,7 @@ export class AiTutor {
     }
     const modelSummary =
       typeof parsed.summary === "string"
-        ? boundedModelText(parsed.summary, MAX_ROUTE_SUMMARY_LENGTH)
+        ? progressiveRouteSummary(parsed.summary)
         : "";
 
     return {
@@ -327,9 +327,35 @@ function boundedModelText(value: string, maximumLength: number): string {
     : `${normalized.slice(0, maximumLength - 1)}…`;
 }
 
+function progressiveRouteSummary(value: string): string {
+  const lines = value
+    .replaceAll("\0", "")
+    .split(/\r?\n/u)
+    .map((line) => line.trim());
+  const firstListLine = lines.findIndex((line) =>
+    /^(?:[-*•]|\d+[.)、])\s*/u.test(line),
+  );
+  const proseLines =
+    firstListLine > 0
+      ? lines.slice(0, firstListLine)
+      : firstListLine === 0
+        ? [lines[0]?.replace(/^(?:[-*•]|\d+[.)、])\s*/u, "") ?? ""]
+        : lines;
+  const emptyLineIndex = proseLines.indexOf("");
+  const paragraphEnd =
+    emptyLineIndex < 0 ? proseLines.length : emptyLineIndex;
+  const firstParagraph = proseLines.slice(0, paragraphEnd).join(" ");
+  const firstTwoSentences =
+    firstParagraph.match(/[^。！？!?]+[。！？!?]?/gu)?.slice(0, 2).join("") ??
+    firstParagraph;
+  return boundedModelText(firstTwoSentences, MAX_ROUTE_SUMMARY_LENGTH);
+}
+
 function routeInstructions(): readonly string[] {
   return [
     "Use only files and symbols present in the supplied project index for route nodes.",
+    "The summary must directly answer the user's current question at a high level and name only the first useful direction to investigate.",
+    "Do not enumerate or reveal the complete route in the summary; the product will disclose route nodes progressively.",
     "Prefer 2-8 high-value stops: entry boundary, orchestration, domain decision, I/O, and result.",
     "For each line, choose a precise executable statement such as a call, branch, state change, or return; do not use a def/class declaration, import, comment, or blank line unless unavoidable.",
     "Return one stop when the project is small.",

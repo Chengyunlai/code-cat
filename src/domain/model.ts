@@ -78,8 +78,28 @@ export interface ChatMessage {
   readonly text: string;
 }
 
-export interface SessionState {
+export interface ConversationRecord {
+  readonly id: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly chatMessages: readonly ChatMessage[];
   readonly route?: RoutePlan;
+  readonly revealedRouteNodeCount: number;
+}
+
+export interface ConversationSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly active: boolean;
+}
+
+export interface SessionState {
+  readonly conversationId: string;
+  readonly conversationTitle: string;
+  readonly route?: RoutePlan;
+  readonly revealedRouteNodeCount: number;
   readonly debugSessionId?: string;
   readonly debugStatus?: "idle" | "running" | "paused" | "ended";
   readonly pauses: readonly DebugPause[];
@@ -87,7 +107,7 @@ export interface SessionState {
   readonly selectedPauseId?: string;
   readonly selectedFrameId?: number;
   readonly tutorMessage?: TutorMessage;
-  readonly contentMode?: "chat" | "route" | "debug" | "message";
+  readonly contentMode?: "chat" | "debug";
   readonly busyMessage?: string;
   readonly requestKind?: "question" | "pause" | "debug" | "control" | "model";
 }
