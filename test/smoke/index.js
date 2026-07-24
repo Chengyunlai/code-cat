@@ -40,6 +40,8 @@ async function run() {
     "codeCat.__showSmokeTab",
     "codeCat.__modelProviderStatus",
     "codeCat.__seedChat",
+    "codeCat.__seedPendingQuestion",
+    "codeCat.__completePendingQuestion",
     "codeCat.__seedTutorError",
     "codeCat.__seedStructuredPause",
     "codeCat.__seedPauseTutorError",
@@ -55,6 +57,7 @@ async function run() {
   await testRoutePreflight();
   testRuntimeEvidenceConstraints();
   await testConversationState();
+  testQuestionTerminalStates();
   await testProviderSpecificSettings();
   testModelProviderSecurity();
   await vscode.commands.executeCommand("codeCat.clearSession");
@@ -86,6 +89,47 @@ async function run() {
     composerKeyboardState.runtimeMap.renderedComposerShortcutText,
     /Enter.*发送.*Shift.*Enter.*换行/u,
   );
+  await vscode.commands.executeCommand("codeCat.__seedPendingQuestion");
+  const pendingQuestionState = await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) =>
+      state?.chatMessageCount === 1 &&
+      state.runtimeMap?.renderedUserMessageCount === 1 &&
+      state.runtimeMap.renderedAssistantMessageCount === 0 &&
+      state.runtimeMap.renderedThinkingIndicatorCount === 1 &&
+      state.runtimeMap.renderedAnswerSkeletonCount === 0 &&
+      state.runtimeMap.lastReceivedVersion === state.runtimeMap.stateVersion,
+    "the Runtime Map to show the submitted message and a separate thinking state",
+  );
+  assert.equal(
+    pendingQuestionState.runtimeMap.renderedThinkingIndicatorCount,
+    1,
+    "a pending question must render one independent thinking indicator",
+  );
+  assert.equal(
+    pendingQuestionState.runtimeMap.renderedAnswerSkeletonCount,
+    0,
+    "thinking must not masquerade as an unfinished assistant answer",
+  );
+
+  await vscode.commands.executeCommand("codeCat.__completePendingQuestion");
+  const completedQuestionState = await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) =>
+      state?.chatMessageCount === 2 &&
+      state.runtimeMap?.renderedUserMessageCount === 1 &&
+      state.runtimeMap.renderedAssistantMessageCount === 1 &&
+      state.runtimeMap.renderedThinkingIndicatorCount === 0 &&
+      state.runtimeMap.lastReceivedVersion === state.runtimeMap.stateVersion,
+    "the Runtime Map to replace thinking with one completed answer",
+  );
+  assert.equal(
+    completedQuestionState.runtimeMap.renderedAssistantMessageCount,
+    1,
+    "completing a question must append exactly one assistant answer",
+  );
+  await vscode.commands.executeCommand("codeCat.clearSession");
+
   await vscode.commands.executeCommand("codeCat.__seedUsage");
   const renderedUsageState = await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
@@ -567,7 +611,23 @@ async function testConversationState() {
   };
   const store = new SessionStore(workspaceState);
   try {
-    store.addChatExchange("你好", "你好！想聊聊什么？");
+    const initialHistory = store.beginQuestion("你好");
+    assert.deepEqual(initialHistory, []);
+    assert.deepEqual(
+      store.snapshot().chatMessages.map(({ role, text }) => ({ role, text })),
+      [{ role: "user", text: "你好" }],
+      "a submitted question must enter the conversation before its answer exists",
+    );
+    assert.equal(store.snapshot().requestKind, "question");
+    assert.equal(store.snapshot().contentMode, "chat");
+    assert.equal(store.snapshot().conversationTitle, "你好");
+    assert.equal(
+      store.beginQuestion("不应并发发送"),
+      undefined,
+      "a second question must not replace the visible pending question",
+    );
+
+    store.completeQuestionWithAnswer("你好！想聊聊什么？");
     assert.deepEqual(
       store.snapshot().chatMessages.map(({ role, text }) => ({ role, text })),
       [
@@ -575,10 +635,20 @@ async function testConversationState() {
         { role: "assistant", text: "你好！想聊聊什么？" },
       ],
     );
+    assert.equal(store.snapshot().requestKind, undefined);
     assert.equal(store.snapshot().contentMode, "chat");
     assert.equal(store.snapshot().conversationTitle, "你好");
     const firstConversationId = store.snapshot().conversationId;
-    store.setRoute({
+    const routeHistory = store.beginQuestion("结账请求经过哪些函数？");
+    assert.equal(routeHistory.length, 2);
+    assert.deepEqual(
+      store.snapshot().chatMessages.slice(-1).map(({ role, text }) => ({
+        role,
+        text,
+      })),
+      [{ role: "user", text: "结账请求经过哪些函数？" }],
+    );
+    store.completeQuestionWithRoute({
       question: "结账请求经过哪些函数？",
       summary: "结账从入口进入库存与支付流程。",
       nodes: [
@@ -709,6 +779,41 @@ async function testConversationState() {
     } finally {
       restored.dispose();
     }
+  } finally {
+    store.dispose();
+  }
+}
+
+function testQuestionTerminalStates() {
+  const store = new SessionStore();
+  try {
+    store.beginQuestion("这次请求会失败吗？");
+    store.completeQuestionWithTutorMessage({
+      id: "question-error",
+      kind: "error",
+      text: "模型暂时不可用。",
+    });
+    assert.equal(store.snapshot().requestKind, undefined);
+    assert.deepEqual(
+      store.snapshot().chatMessages.map(({ role, text }) => ({ role, text })),
+      [{ role: "user", text: "这次请求会失败吗？" }],
+      "an error must preserve the submitted question without inventing an answer",
+    );
+    assert.equal(store.snapshot().tutorMessage.kind, "error");
+
+    store.beginQuestion("第二问仍应正常完成");
+    store.completeQuestionWithAnswer("可以正常完成。");
+    assert.deepEqual(
+      store.snapshot().chatMessages.slice(-2).map(({ role, text }) => ({
+        role,
+        text,
+      })),
+      [
+        { role: "user", text: "第二问仍应正常完成" },
+        { role: "assistant", text: "可以正常完成。" },
+      ],
+      "a terminal state from an earlier question must not block the next question",
+    );
   } finally {
     store.dispose();
   }

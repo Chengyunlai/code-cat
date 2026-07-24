@@ -16,6 +16,7 @@ export const runtimeMapStyles = String.raw`
       --cc-on-strong: var(--vscode-editor-background, #ffffff);
       --cc-radius: 8px;
       --cc-ease-out: cubic-bezier(.23, 1, .32, 1);
+      --cc-ease-in-out: cubic-bezier(.77, 0, .175, 1);
     }
     * { box-sizing: border-box; }
     html, body { min-height: 100%; }
@@ -78,6 +79,7 @@ export const runtimeMapStyles = String.raw`
       color: var(--cc-muted);
       font-size: 11px;
     }
+    .session-status.status-hidden { display: none; }
     .status-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .55; }
     .status-dot.primary { color: var(--cc-ink); opacity: 1; }
     .status-dot.success { color: var(--cc-success); opacity: 1; }
@@ -221,6 +223,29 @@ export const runtimeMapStyles = String.raw`
       padding: 8px 12px;
       background: var(--cc-user-message);
       border-radius: var(--cc-radius);
+    }
+    .thinking-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 28px;
+      width: fit-content;
+      color: var(--cc-muted);
+      font-size: 12px;
+    }
+    .conversation + .thinking-indicator { margin-top: -12px; }
+    .thinking-dot {
+      flex: 0 0 auto;
+      width: 7px;
+      height: 7px;
+      background: var(--cc-ink);
+      border-radius: 50%;
+      animation: thinking-pulse 900ms var(--cc-ease-in-out) infinite alternate;
+    }
+    .thinking-label { text-wrap: pretty; }
+    @keyframes thinking-pulse {
+      from { opacity: .32; }
+      to { opacity: 1; }
     }
     .exploration-context {
       display: flex;
@@ -462,5 +487,6 @@ export const runtimeMapStyles = String.raw`
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+      .thinking-dot { animation: none; opacity: .72; }
     }
 `;

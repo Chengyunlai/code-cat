@@ -64,33 +64,30 @@ export class SessionStore implements vscode.Disposable {
   }
 
   public setRoute(route: RoutePlan): void {
-    const preserveDebugSnapshot = Boolean(this.state.debugSessionId);
-    const chatMessages = appendChatExchange(
-      this.state.chatMessages,
-      route.question,
-      route.summary,
-    );
-    this.updateConversation({
-      ...this.state,
-      conversationTitle: resolvedConversationTitle(
-        this.state.conversationTitle,
-        route.question,
-      ),
-      chatMessages,
+    this.applyRoute(
       route,
-      revealedRouteNodeCount: route.nodes.length > 0 ? 1 : 0,
-      pauses: preserveDebugSnapshot ? this.state.pauses : [],
-      selectedPauseId: preserveDebugSnapshot ? this.state.selectedPauseId : undefined,
-      selectedFrameId: preserveDebugSnapshot ? this.state.selectedFrameId : undefined,
-      debugStatus: this.state.debugSessionId ? this.state.debugStatus : "idle",
-      busyMessage: undefined,
-      tutorMessage: {
-        id: randomUUID(),
-        kind: "route",
-        text: route.summary,
-      },
-      contentMode: "chat",
-    });
+      appendChatExchange(
+        this.state.chatMessages,
+        route.question,
+        route.summary,
+      ),
+      this.state.requestKind,
+    );
+  }
+
+  public completeQuestionWithRoute(route: RoutePlan): void {
+    if (this.state.requestKind !== "question") {
+      return;
+    }
+    this.applyRoute(
+      route,
+      appendChatMessage(
+        this.state.chatMessages,
+        "assistant",
+        route.summary,
+      ),
+      undefined,
+    );
   }
 
   public revealNextRouteNode(): boolean {
@@ -216,6 +213,55 @@ export class SessionStore implements vscode.Disposable {
     });
   }
 
+  public beginQuestion(question: string): readonly ChatMessage[] | undefined {
+    if (this.state.requestKind) {
+      return undefined;
+    }
+    const priorMessages = this.state.chatMessages;
+    this.updateConversation({
+      ...this.state,
+      conversationTitle: resolvedConversationTitle(
+        this.state.conversationTitle,
+        question,
+      ),
+      chatMessages: appendChatMessage(this.state.chatMessages, "user", question),
+      tutorMessage: undefined,
+      contentMode: "chat",
+      busyMessage: "正在理解你的问题…",
+      requestKind: "question",
+    });
+    return priorMessages;
+  }
+
+  public completeQuestionWithAnswer(answer: string): void {
+    if (this.state.requestKind !== "question") {
+      return;
+    }
+    this.updateConversation({
+      ...this.state,
+      chatMessages: appendChatMessage(this.state.chatMessages, "assistant", answer),
+      tutorMessage: undefined,
+      contentMode: "chat",
+      busyMessage: undefined,
+      requestKind: undefined,
+    });
+  }
+
+  public completeQuestionWithTutorMessage(
+    message: Extract<TutorMessage, { readonly kind: "system" | "error" }>,
+  ): void {
+    if (this.state.requestKind !== "question") {
+      return;
+    }
+    this.updateConversation({
+      ...this.state,
+      tutorMessage: message,
+      contentMode: "chat",
+      busyMessage: undefined,
+      requestKind: undefined,
+    });
+  }
+
   public setBusy(message?: string): void {
     this.update({ ...this.state, busyMessage: message });
   }
@@ -281,6 +327,36 @@ export class SessionStore implements vscode.Disposable {
     this.rememberCurrentConversation(true);
     this.persist();
     this.changeEmitter.fire(next);
+  }
+
+  private applyRoute(
+    route: RoutePlan,
+    chatMessages: readonly ChatMessage[],
+    requestKind: SessionState["requestKind"],
+  ): void {
+    const preserveDebugSnapshot = Boolean(this.state.debugSessionId);
+    this.updateConversation({
+      ...this.state,
+      conversationTitle: resolvedConversationTitle(
+        this.state.conversationTitle,
+        route.question,
+      ),
+      chatMessages,
+      route,
+      revealedRouteNodeCount: route.nodes.length > 0 ? 1 : 0,
+      pauses: preserveDebugSnapshot ? this.state.pauses : [],
+      selectedPauseId: preserveDebugSnapshot ? this.state.selectedPauseId : undefined,
+      selectedFrameId: preserveDebugSnapshot ? this.state.selectedFrameId : undefined,
+      debugStatus: this.state.debugSessionId ? this.state.debugStatus : "idle",
+      busyMessage: undefined,
+      requestKind,
+      tutorMessage: {
+        id: randomUUID(),
+        kind: "route",
+        text: route.summary,
+      },
+      contentMode: "chat",
+    });
   }
 
   private rememberCurrentConversation(touch = false): void {
@@ -361,11 +437,19 @@ function appendChatExchange(
   question: string,
   answer: string,
 ): readonly ChatMessage[] {
-  return [
-    ...current,
-    { id: randomUUID(), role: "user" as const, text: question },
-    { id: randomUUID(), role: "assistant" as const, text: answer },
-  ].slice(-MAX_CHAT_MESSAGES);
+  return appendChatMessage(
+    appendChatMessage(current, "user", question),
+    "assistant",
+    answer,
+  );
+}
+
+function appendChatMessage(
+  current: readonly ChatMessage[],
+  role: ChatMessage["role"],
+  text: string,
+): readonly ChatMessage[] {
+  return [...current, { id: randomUUID(), role, text }].slice(-MAX_CHAT_MESSAGES);
 }
 
 function resolvedConversationTitle(current: string, question: string): string {

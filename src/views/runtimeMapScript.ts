@@ -15,6 +15,7 @@ export const runtimeMapScript = String.raw`
       pauseRail: document.getElementById('pause-rail'),
       question: document.getElementById('question'),
       send: document.getElementById('locate'),
+      sessionStatus: document.querySelector('.session-status'),
       sessionTitle: document.getElementById('session-title'),
       stackCount: document.getElementById('stack-count'),
       statusDot: document.getElementById('status-dot'),
@@ -86,9 +87,11 @@ export const runtimeMapScript = String.raw`
       if (event.data?.type === 'state') {
         const nextState = event.data.state;
         const nextChatMessageCount = (nextState.chatMessages || []).length;
+        const shouldRevealLatest =
+          nextChatMessageCount > renderedChatMessageCount;
         if (
           (renderedConversationId && nextState.conversationId !== renderedConversationId) ||
-          nextChatMessageCount > renderedChatMessageCount
+          shouldRevealLatest
         ) {
           activeTab = 'overview';
         }
@@ -96,11 +99,18 @@ export const runtimeMapScript = String.raw`
         renderedChatMessageCount = nextChatMessageCount;
         currentState = nextState;
         render(currentState);
+        if (shouldRevealLatest) {
+          revealLatestConversationItem();
+        }
         vscode.postMessage({
           type: 'renderedState',
           version: event.data.version,
           diagnostics: {
             chatMessageCount: (currentState.chatMessages || []).length,
+            userMessageCount: elements.content.querySelectorAll('.chat-turn.user').length,
+            assistantMessageCount: elements.content.querySelectorAll('.chat-turn.assistant').length,
+            thinkingIndicatorCount: elements.content.querySelectorAll('.thinking-indicator').length,
+            answerSkeletonCount: elements.content.querySelectorAll('.skeleton').length,
             chatRoleLabelCount: elements.content.querySelectorAll('.chat-role').length,
             richTextElementCount: elements.content.querySelectorAll('.chat-body code, .chat-body strong').length,
             pauseExplanationSectionCount: elements.content.querySelectorAll('.explanation-section').length,
@@ -240,10 +250,10 @@ export const runtimeMapScript = String.raw`
         elements.question.focus();
         return;
       }
-      vscode.postMessage({ type: 'askQuestion', question });
-      beginLocalRequest();
       elements.question.value = '';
       resizeQuestion();
+      beginLocalQuestion(question);
+      vscode.postMessage({ type: 'askQuestion', question });
     }
 
     function resizeQuestion() {
@@ -263,6 +273,33 @@ export const runtimeMapScript = String.raw`
       elements.pauseRail.querySelectorAll('button').forEach((button) => { button.disabled = true; });
       (buttons || []).forEach((button) => { button.disabled = true; });
       return true;
+    }
+
+    function beginLocalQuestion(question) {
+      const optimisticMessage = {
+        id: 'pending-' + Date.now(),
+        role: 'user',
+        text: question,
+      };
+      activeTab = 'overview';
+      currentState = {
+        ...currentState,
+        chatMessages: [...(currentState.chatMessages || []), optimisticMessage],
+        contentMode: 'chat',
+        requestPending: true,
+        requestKind: 'question',
+        busyMessage: '正在理解你的问题…',
+      };
+      render(currentState);
+      revealLatestConversationItem();
+    }
+
+    function revealLatestConversationItem() {
+      const candidates = elements.content.querySelectorAll(
+        '.thinking-indicator, .chat-turn',
+      );
+      const latest = candidates[candidates.length - 1];
+      latest?.scrollIntoView({ block: 'nearest' });
     }
 
     function selectedPauseIsLive(state) {
@@ -300,6 +337,15 @@ export const runtimeMapScript = String.raw`
       const pauses = state.pauses || [];
       const frames = state.frames || [];
       const selectedPauseIndex = Math.max(0, pauses.findIndex((pause) => pause.selected));
+      const sessionStatusVisible =
+        state.requestKind !== 'question' &&
+        (!state.workspaceOpen ||
+          Boolean(state.requestPending || state.busyMessage) ||
+          Boolean(state.debugging || state.route));
+      elements.sessionStatus.classList.toggle(
+        'status-hidden',
+        !sessionStatusVisible,
+      );
       elements.statusDot.className = 'status-dot';
       if (state.requestPending || state.busyMessage) {
         elements.statusDot.classList.add('primary');
@@ -360,6 +406,21 @@ export const runtimeMapScript = String.raw`
     }
 
     function renderBusy(root, message, state) {
+      if (state.requestKind === 'question') {
+        const indicator = document.createElement('div');
+        indicator.className = 'thinking-indicator';
+        indicator.setAttribute('role', 'status');
+        indicator.setAttribute('aria-live', 'polite');
+        const dot = document.createElement('span');
+        dot.className = 'thinking-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.className = 'thinking-label';
+        label.textContent = message || '正在理解你的问题…';
+        indicator.append(dot, label);
+        root.appendChild(indicator);
+        return;
+      }
       const title = state.requestKind === 'pause'
         ? selectedPauseIsLive(state) ? '正在解释当前暂停' : '正在解释历史快照'
         : state.requestKind === 'debug'

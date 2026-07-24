@@ -15,7 +15,7 @@ import {
   PythonProjectScript,
   selectedPythonInterpreterPath,
 } from "./debug/pythonLaunchTargets";
-import { RoutePlan, SourceLocation } from "./domain/model";
+import { type ChatMessage, RoutePlan, SourceLocation } from "./domain/model";
 import { PythonProjectIndex } from "./project/pythonProjectIndex";
 import { CallStackTree } from "./views/callStackTree";
 import { RuntimeMapActions, RuntimeMapView } from "./views/runtimeMapView";
@@ -59,10 +59,20 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const actions: RuntimeMapActions = {
-    askQuestion: (question) =>
-      actionCoordinator.run("question", () =>
-        answerQuestion(store, tutor, breakpoints, question),
-      ),
+    askQuestion: async (question) => {
+      const priorMessages = store.beginQuestion(question);
+      if (!priorMessages) {
+        return;
+      }
+      await answerQuestion(
+        store,
+        tutor,
+        breakpoints,
+        question,
+        priorMessages,
+      );
+      void vscode.commands.executeCommand("workbench.view.extension.codeCat");
+    },
     startGuidedDebug: (question) =>
       actionCoordinator.run("debug", () =>
         startGuidedDebug(
@@ -262,6 +272,12 @@ export function activate(context: vscode.ExtensionContext): void {
           "查看 `checkout`，再对照 **调用栈**。",
         );
       }),
+      vscode.commands.registerCommand("codeCat.__seedPendingQuestion", () => {
+        store.beginQuestion("这是刚刚发送、尚未回答的消息");
+      }),
+      vscode.commands.registerCommand("codeCat.__completePendingQuestion", () => {
+        store.completeQuestionWithAnswer("这是思考结束后追加的唯一回复。");
+      }),
       vscode.commands.registerCommand("codeCat.__seedUsage", async () => {
         await usageTracker.resetProject();
         usageTracker.clearSession();
@@ -453,26 +469,25 @@ async function answerQuestion(
   tutor: AiTutor,
   breakpoints: ManagedBreakpointService,
   question: string,
+  priorMessages: readonly ChatMessage[],
 ): Promise<void> {
-  store.setBusy("正在理解你的问题…");
+  const cancellation = new vscode.CancellationTokenSource();
   try {
-    const result = await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Window,
-        title: "Code Cat is answering",
-        cancellable: true,
-      },
-      async (_progress, token) =>
-        tutor.answerQuestion(question, store.snapshot().chatMessages, token),
+    const result = await tutor.answerQuestion(
+      question,
+      priorMessages,
+      cancellation.token,
     );
     if (result.kind === "chat") {
-      store.addChatExchange(question, result.answer);
+      store.completeQuestionWithAnswer(result.answer);
     } else {
-      replaceReadingRoute(store, breakpoints, result.route);
+      breakpoints.clear();
+      store.completeQuestionWithRoute(result.route);
     }
-    await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   } catch (error) {
-    handleTutorError(store, error);
+    handleQuestionTutorError(store, error);
+  } finally {
+    cancellation.dispose();
   }
 }
 
@@ -764,6 +779,15 @@ function handleTutorError(store: SessionStore, error: unknown): void {
   }
   store.setTutorMessage({ id: randomUUID(), kind: "error", text: message });
   void vscode.commands.executeCommand("workbench.view.extension.codeCat");
+}
+
+function handleQuestionTutorError(store: SessionStore, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  store.completeQuestionWithTutorMessage({
+    id: randomUUID(),
+    kind: error instanceof TutorGuidanceError ? "system" : "error",
+    text: message,
+  });
 }
 
 function handlePauseTutorError(

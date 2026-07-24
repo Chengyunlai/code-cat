@@ -46,6 +46,10 @@ interface InteractionMotionDiagnostics {
 
 interface RenderedDiagnostics {
   readonly chatMessageCount: number;
+  readonly userMessageCount: number;
+  readonly assistantMessageCount: number;
+  readonly thinkingIndicatorCount: number;
+  readonly answerSkeletonCount: number;
   readonly chatRoleLabelCount: number;
   readonly richTextElementCount: number;
   readonly pauseExplanationSectionCount: number;
@@ -143,6 +147,10 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly lastReceivedVersion: number | undefined;
     readonly scriptError: string | undefined;
     readonly renderedChatMessageCount: number;
+    readonly renderedUserMessageCount: number;
+    readonly renderedAssistantMessageCount: number;
+    readonly renderedThinkingIndicatorCount: number;
+    readonly renderedAnswerSkeletonCount: number;
     readonly renderedChatRoleLabelCount: number;
     readonly renderedRichTextElementCount: number;
     readonly renderedPauseExplanationSectionCount: number;
@@ -177,6 +185,11 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       lastReceivedVersion: this.lastReceivedVersion,
       scriptError: this.scriptError,
       renderedChatMessageCount: this.renderedDiagnostics.chatMessageCount,
+      renderedUserMessageCount: this.renderedDiagnostics.userMessageCount,
+      renderedAssistantMessageCount: this.renderedDiagnostics.assistantMessageCount,
+      renderedThinkingIndicatorCount:
+        this.renderedDiagnostics.thinkingIndicatorCount,
+      renderedAnswerSkeletonCount: this.renderedDiagnostics.answerSkeletonCount,
       renderedChatRoleLabelCount: this.renderedDiagnostics.chatRoleLabelCount,
       renderedRichTextElementCount: this.renderedDiagnostics.richTextElementCount,
       renderedPauseExplanationSectionCount:
@@ -368,6 +381,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       case "askQuestion":
         if (typeof value.question === "string" && value.question.trim()) {
           await this.actions.askQuestion(value.question.trim());
+          this.postState();
         }
         return;
       case "startDebug":
@@ -478,6 +492,10 @@ function displayFrameName(name: string): string {
 function emptyRenderedDiagnostics(): RenderedDiagnostics {
   return {
     chatMessageCount: 0,
+    userMessageCount: 0,
+    assistantMessageCount: 0,
+    thinkingIndicatorCount: 0,
+    answerSkeletonCount: 0,
     chatRoleLabelCount: 0,
     richTextElementCount: 0,
     pauseExplanationSectionCount: 0,
@@ -507,6 +525,10 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
   const diagnostics = value as Partial<Record<keyof RenderedDiagnostics, unknown>>;
   return {
     chatMessageCount: numberDiagnostic(diagnostics.chatMessageCount),
+    userMessageCount: numberDiagnostic(diagnostics.userMessageCount),
+    assistantMessageCount: numberDiagnostic(diagnostics.assistantMessageCount),
+    thinkingIndicatorCount: numberDiagnostic(diagnostics.thinkingIndicatorCount),
+    answerSkeletonCount: numberDiagnostic(diagnostics.answerSkeletonCount),
     chatRoleLabelCount: numberDiagnostic(diagnostics.chatRoleLabelCount),
     richTextElementCount: numberDiagnostic(diagnostics.richTextElementCount),
     pauseExplanationSectionCount: numberDiagnostic(
