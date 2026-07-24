@@ -89,6 +89,16 @@ async function run() {
     composerKeyboardState.runtimeMap.renderedComposerShortcutText,
     /Enter.*发送.*Shift.*Enter.*换行/u,
   );
+  assert.match(
+    composerKeyboardState.runtimeMap.renderedComposerPlaceholderText,
+    /项目代码|调试/u,
+    "the composer must invite project-focused questions",
+  );
+  assert.doesNotMatch(
+    composerKeyboardState.runtimeMap.renderedComposerPlaceholderText,
+    /聊天/u,
+    "the composer must not present Code Cat as a general chat surface",
+  );
   await vscode.commands.executeCommand("codeCat.__seedPendingQuestion");
   const pendingQuestionState = await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),
@@ -891,17 +901,126 @@ async function testRoutePreflight() {
       {
         request: async () => {
           greetingModelRequests += 1;
-          return JSON.stringify({ kind: "chat", message: "你好！想聊聊什么？" });
+          return JSON.stringify({ kind: "project_chat", message: "unused" });
         },
       },
     );
     assert.deepEqual(
       await greetingTutor.answerQuestion("你好", [], cancellation.token),
-      { kind: "chat", answer: "你好！想聊聊什么？" },
+      {
+        kind: "chat",
+        answer:
+          "你好！我可以帮你理解当前项目的代码、调用链和调试过程。你想从哪个功能或问题开始？",
+      },
     );
     assert.equal(greetingReadinessChecks, 0, "a greeting must not inspect the project");
     assert.equal(greetingIndexRequests, 0, "a greeting must not build project context");
     assert.equal(greetingModelRequests, 0, "a greeting must not wait for the model");
+
+    const readyQuestionTutor = (request) =>
+      new AiTutor(
+        {
+          readinessIssue: async () => undefined,
+          promptContext: async () =>
+            "Python files (1):\napp.py\n\nSymbols (3 indexed; 3 shown):",
+          resolveFile: async () => undefined,
+        },
+        { request },
+      );
+    let outOfScopePrompt = "";
+    const outOfScopeTutor = readyQuestionTutor(async (prompt) => {
+      outOfScopePrompt = prompt;
+      return JSON.stringify({
+        kind: "out_of_scope",
+        message: "今天晴朗，适合出门。",
+      });
+    });
+    assert.deepEqual(
+      await outOfScopeTutor.answerQuestion("解释一下量子纠缠", [], cancellation.token),
+      {
+        kind: "chat",
+        answer:
+          "这个问题与当前项目代码无关，我先不展开回答。你可以继续问我这个项目的功能、调用链、变量或调试过程。",
+      },
+      "an unrelated question must get a scoped redirect instead of the model's attempted answer",
+    );
+    assert.match(
+      outOfScopePrompt,
+      /not a general-purpose assistant[\s\S]*do not answer[\s\S]*"kind":"out_of_scope"/iu,
+      "the model request must classify and decline out-of-scope intent",
+    );
+
+    const projectChatTutor = readyQuestionTutor(async () =>
+      JSON.stringify({
+        kind: "project_chat",
+        message: "天气 API 的调用从 app.py 开始。",
+      }),
+    );
+    assert.deepEqual(
+      await projectChatTutor.answerQuestion(
+        "天气 API 的代码在哪里？",
+        [],
+        cancellation.token,
+      ),
+      {
+        kind: "chat",
+        answer: "天气 API 的调用从 app.py 开始。",
+      },
+      "project context must keep a weather-related code question in scope",
+    );
+
+    let deterministicScopeGuardModelRequests = 0;
+    const misclassifiedTutor = readyQuestionTutor(async () => {
+      deterministicScopeGuardModelRequests += 1;
+      return JSON.stringify({
+        kind: "project_chat",
+        message: "这是一段与项目无关的回答。",
+      });
+    });
+    for (const unrelatedQuestion of [
+      "北京天气",
+      "帮我规划周末去哪里玩",
+      "今天有什么新闻",
+      "给我讲个笑话",
+      "帮我写一首春天的诗",
+      "我该不该辞职",
+      "帮我规划旅游路径",
+      "帮我写一个关于人类的故事",
+      "帮我规划一个旅游项目",
+      "帮我写一个实现梦想的故事",
+    ]) {
+      assert.deepEqual(
+        await misclassifiedTutor.answerQuestion(
+          unrelatedQuestion,
+          [],
+          cancellation.token,
+        ),
+        {
+          kind: "chat",
+          answer:
+            "这个问题与当前项目代码无关，我先不展开回答。你可以继续问我这个项目的功能、调用链、变量或调试过程。",
+        },
+        `the deterministic scope guard must block: ${unrelatedQuestion}`,
+      );
+    }
+    assert.equal(
+      deterministicScopeGuardModelRequests,
+      0,
+      "obvious unrelated intents must not reach a model that could misclassify them",
+    );
+
+    const unstructuredIntentTutor = readyQuestionTutor(
+      async () => "今天晴朗，适合出门。",
+    );
+    await assert.rejects(
+      unstructuredIntentTutor.answerQuestion(
+        "什么是黑洞",
+        [],
+        cancellation.token,
+      ),
+      /模型没有按意图协议返回/u,
+      "unstructured model text must never bypass the product scope",
+    );
 
     let pauseExplanationPrompt = "";
     const pauseTutor = new AiTutor(

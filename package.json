@@ -2,7 +2,7 @@
   "name": "code-cat",
   "displayName": "Code Cat",
   "description": "A debug-driven AI tutor for understanding Python code paths in VS Code.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "local",
   "license": "MIT",
   "engines": {

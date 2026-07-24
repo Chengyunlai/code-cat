@@ -68,6 +68,7 @@ interface RenderedDiagnostics {
   readonly renderedRouteNodeCount: number;
   readonly renderedExplorationContextCount: number;
   readonly composerShortcutText: string;
+  readonly composerPlaceholderText: string;
   readonly userMessageSurfaceDeclared: boolean;
   readonly userMessageSurfaceDistinct: boolean;
   readonly interactionMotion: InteractionMotionDiagnostics;
@@ -173,6 +174,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedRouteNodeCount: number;
     readonly renderedExplorationContextCount: number;
     readonly renderedComposerShortcutText: string;
+    readonly renderedComposerPlaceholderText: string;
     readonly renderedUserMessageSurfaceDeclared: boolean;
     readonly renderedUserMessageSurfaceDistinct: boolean;
     readonly renderedInteractionMotion: InteractionMotionDiagnostics;
@@ -223,6 +225,8 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedExplorationContextCount:
         this.renderedDiagnostics.renderedExplorationContextCount,
       renderedComposerShortcutText: this.renderedDiagnostics.composerShortcutText,
+      renderedComposerPlaceholderText:
+        this.renderedDiagnostics.composerPlaceholderText,
       renderedUserMessageSurfaceDeclared:
         this.renderedDiagnostics.userMessageSurfaceDeclared,
       renderedUserMessageSurfaceDistinct:
@@ -528,6 +532,7 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     renderedRouteNodeCount: 0,
     renderedExplorationContextCount: 0,
     composerShortcutText: "",
+    composerPlaceholderText: "",
     userMessageSurfaceDeclared: false,
     userMessageSurfaceDistinct: false,
     interactionMotion: emptyInteractionMotionDiagnostics(),
@@ -572,6 +577,7 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
       typeof diagnostics.composerShortcutText === "string"
         ? diagnostics.composerShortcutText
         : "",
+    composerPlaceholderText: stringDiagnostic(diagnostics.composerPlaceholderText),
     userMessageSurfaceDeclared: diagnostics.userMessageSurfaceDeclared === true,
     userMessageSurfaceDistinct: diagnostics.userMessageSurfaceDistinct === true,
     interactionMotion: parseInteractionMotionDiagnostics(diagnostics.interactionMotion),

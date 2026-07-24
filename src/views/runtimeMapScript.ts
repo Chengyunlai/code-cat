@@ -140,6 +140,7 @@ export const runtimeMapScript = String.raw`
             renderedRouteNodeCount: elements.content.querySelectorAll('.path-node').length,
             renderedExplorationContextCount: elements.content.querySelectorAll('.exploration-context').length,
             composerShortcutText: elements.composerShortcut.textContent,
+            composerPlaceholderText: elements.question.placeholder,
             userMessageSurfaceDeclared: Boolean(
               getComputedStyle(document.documentElement)
                 .getPropertyValue('--cc-user-message')
@@ -229,12 +230,12 @@ export const runtimeMapScript = String.raw`
       view.className = 'view';
       elements.composerMode.textContent = !state.workspaceOpen
         ? '需要打开 Python 项目'
-        : route || chatMessages.length ? '继续聊天或询问代码路径' : '聊天或询问代码路径';
+        : route || chatMessages.length ? '继续理解当前项目' : '项目代码理解';
       elements.question.placeholder = !state.workspaceOpen
         ? '打开项目后即可定位代码路径'
         : route
-          ? '继续聊天，或输入新的代码问题'
-          : '输入消息，或询问项目代码';
+          ? '继续追问当前代码路径，或输入新的项目问题'
+          : '询问当前项目的代码、调用链或调试问题';
       const sendLabel = '发送消息';
       elements.send.title = sendLabel;
       elements.send.setAttribute('aria-label', sendLabel);
