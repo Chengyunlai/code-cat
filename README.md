@@ -254,6 +254,26 @@ open a new task after installation so the newly installed skill is discovered.
 
 Open this repository in VS Code and press `F5`. The extension-development window opens the bundled `examples/python-order-service` workspace. `npm run package` creates a versioned `code-cat-*.vsix` file in the repository root.
 
+### Refresh an installed VSIX after source changes
+
+Editing or compiling the repository does not update a Code Cat extension that was previously
+installed from VSIX. After every source change that you want to verify in the normal VS Code
+window:
+
+1. Run `npm run package` to rebuild the versioned VSIX.
+2. Reinstall that newly generated file with **Install from VSIX...**, or run:
+
+   ```bash
+   code --install-extension "/absolute/path/to/code-cat-X.Y.Z.vsix" --force
+   ```
+
+3. Run **Developer: Reload Window** in the same VS Code profile that has `local.code-cat`
+   installed.
+
+The `--force` flag is required when reinstalling a rebuilt package with the same version number.
+If you are using the `F5` extension-development window instead, stop that debug session and start
+it again; the already-running extension host does not hot-reload compiled Webview code.
+
 The real VS Code smoke test is optional and requires the VS Code application plus the Microsoft Python extensions:
 
 ```bash
