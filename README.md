@@ -13,6 +13,8 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 - Navigate between route nodes, historical pauses, stack frames, and source code.
 - Ask the model to explain the current pause from runtime evidence.
 - Track reported or estimated token usage for the last request, current conversation, and current project.
+- Keep user messages visually distinct with a restrained theme-aware surface; press **Enter** to
+  send and **Shift+Enter** to insert a line break.
 - Follow one guided workspace with task/debug status, current lesson, execution-path,
   call-stack, and variable tabs, plus a contextual question box fixed at the bottom.
 
@@ -142,7 +144,11 @@ English symbol terms.
 ### 4. First guided-debug session
 
 1. Open the Code Cat activity-bar view.
-2. Type a normal message to chat with Code Cat, or ask a project question such as `How does checkout validate inventory and charge the customer?`. Code Cat automatically chooses conversation or code-path mode.
+2. Type a normal message to chat with Code Cat, or ask a project question such as
+   `How does checkout validate inventory and charge the customer?`. Press **Enter** to send or
+   **Shift+Enter** to add a line break. Your messages use a subtle background so they stay
+   distinct from Code Cat's replies. Code Cat automatically chooses conversation or code-path
+   mode.
 3. For a code-path question, wait for the proposed route.
 4. Toggle a teaching breakpoint on a proposed route node. When possible, Code Cat refines a
    function declaration to its first executable statement.

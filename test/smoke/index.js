@@ -35,6 +35,7 @@ async function run() {
     "codeCat.__startSmokeDebug",
     "codeCat.__smokeState",
     "codeCat.__showSmokeView",
+    "codeCat.__runComposerSmoke",
     "codeCat.__modelProviderStatus",
     "codeCat.__seedChat",
     "codeCat.__seedTutorError",
@@ -60,6 +61,26 @@ async function run() {
     () => vscode.commands.executeCommand("codeCat.__showSmokeView"),
     (shown) => shown === true,
     "the Runtime Map view to resolve",
+  );
+  await vscode.commands.executeCommand("codeCat.__runComposerSmoke");
+  const composerKeyboardState = await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) => state?.runtimeMap?.composerSmokeResultCount === 1,
+    "the Runtime Map to exercise its composer keyboard behavior",
+  );
+  assert.equal(
+    composerKeyboardState.runtimeMap.composerEnterDefaultPrevented,
+    true,
+    "Enter must submit instead of inserting a line break",
+  );
+  assert.equal(
+    composerKeyboardState.runtimeMap.composerShiftEnterDefaultPrevented,
+    false,
+    "Shift+Enter must preserve the textarea line break",
+  );
+  assert.match(
+    composerKeyboardState.runtimeMap.renderedComposerShortcutText,
+    /Enter.*发送.*Shift.*Enter.*换行/u,
   );
   await vscode.commands.executeCommand("codeCat.__seedUsage");
   const renderedUsageState = await waitForValue(
@@ -98,6 +119,16 @@ async function run() {
     renderedChatState.runtimeMap.renderedRichTextElementCount,
     2,
     "chat answers must render inline code and emphasis as structured DOM",
+  );
+  assert.equal(
+    renderedChatState.runtimeMap.renderedUserMessageSurfaceDeclared,
+    true,
+    "user messages must use their own restrained surface token",
+  );
+  assert.equal(
+    renderedChatState.runtimeMap.renderedUserMessageSurfaceDistinct,
+    true,
+    "the user-message surface must remain visible against the editor background",
   );
   await vscode.commands.executeCommand("codeCat.__seedTutorError");
   await waitForValue(

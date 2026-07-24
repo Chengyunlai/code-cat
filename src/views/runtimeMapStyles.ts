@@ -4,6 +4,8 @@ export const runtimeMapStyles = String.raw`
       --cc-bg: var(--vscode-editor-background, #ffffff);
       --cc-surface: var(--vscode-input-background, #f4f4f5);
       --cc-surface-hover: var(--vscode-list-hoverBackground, #ececee);
+      --cc-user-message: var(--cc-surface);
+      --cc-user-message: color-mix(in srgb, var(--cc-ink) 7%, var(--cc-bg));
       --cc-border: var(--vscode-widget-border, var(--vscode-panel-border, #dedee2));
       --cc-ink: var(--vscode-foreground, #202124);
       --cc-muted: var(--vscode-descriptionForeground, #616168);
@@ -254,7 +256,7 @@ export const runtimeMapStyles = String.raw`
       width: fit-content;
       max-width: min(85%, 70ch);
       padding: 8px 12px;
-      background: var(--cc-surface);
+      background: var(--cc-user-message);
       border-radius: var(--cc-radius);
     }
     .route-summary { margin-bottom: 14px; padding: 0 0 12px; color: var(--cc-muted); border-bottom: 1px solid var(--cc-border); }

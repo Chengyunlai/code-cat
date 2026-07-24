@@ -33,6 +33,8 @@ interface WebviewMessage {
   readonly command?: unknown;
   readonly version?: unknown;
   readonly diagnostics?: unknown;
+  readonly enterDefaultPrevented?: unknown;
+  readonly shiftEnterDefaultPrevented?: unknown;
 }
 
 interface RenderedDiagnostics {
@@ -51,6 +53,9 @@ interface RenderedDiagnostics {
   readonly usageCacheCount: number;
   readonly usageLastCacheDetailCount: number;
   readonly usageResetButtonCount: number;
+  readonly composerShortcutText: string;
+  readonly userMessageSurfaceDeclared: boolean;
+  readonly userMessageSurfaceDistinct: boolean;
   readonly contentMode: string | undefined;
   readonly tutorMessageRendered: boolean;
 }
@@ -64,6 +69,9 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
   private renderedStateCount = 0;
   private lastReceivedVersion: number | undefined;
   private scriptError: string | undefined;
+  private composerSmokeResultCount = 0;
+  private composerEnterDefaultPrevented = false;
+  private composerShiftEnterDefaultPrevented = false;
   private renderedDiagnostics = emptyRenderedDiagnostics();
   private readonly disposables: vscode.Disposable[] = [];
 
@@ -142,6 +150,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedUsageCacheCount: number;
     readonly renderedUsageLastCacheDetailCount: number;
     readonly renderedUsageResetButtonCount: number;
+    readonly renderedComposerShortcutText: string;
+    readonly renderedUserMessageSurfaceDeclared: boolean;
+    readonly renderedUserMessageSurfaceDistinct: boolean;
+    readonly composerSmokeResultCount: number;
+    readonly composerEnterDefaultPrevented: boolean;
+    readonly composerShiftEnterDefaultPrevented: boolean;
     readonly renderedContentMode: string | undefined;
     readonly tutorMessageRendered: boolean;
   } {
@@ -175,6 +189,14 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedUsageLastCacheDetailCount:
         this.renderedDiagnostics.usageLastCacheDetailCount,
       renderedUsageResetButtonCount: this.renderedDiagnostics.usageResetButtonCount,
+      renderedComposerShortcutText: this.renderedDiagnostics.composerShortcutText,
+      renderedUserMessageSurfaceDeclared:
+        this.renderedDiagnostics.userMessageSurfaceDeclared,
+      renderedUserMessageSurfaceDistinct:
+        this.renderedDiagnostics.userMessageSurfaceDistinct,
+      composerSmokeResultCount: this.composerSmokeResultCount,
+      composerEnterDefaultPrevented: this.composerEnterDefaultPrevented,
+      composerShiftEnterDefaultPrevented: this.composerShiftEnterDefaultPrevented,
       renderedContentMode: this.renderedDiagnostics.contentMode,
       tutorMessageRendered: this.renderedDiagnostics.tutorMessageRendered,
     };
@@ -190,6 +212,14 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
 
   public refresh(): void {
     this.postState();
+  }
+
+  public async runComposerSmoke(): Promise<boolean> {
+    if (!this.view) {
+      return false;
+    }
+    this.composerSmokeResultCount = 0;
+    return this.view.webview.postMessage({ type: "smokeComposer" });
   }
 
   private postState(): void {
@@ -303,6 +333,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         return;
       case "scriptError":
         this.scriptError = typeof value.error === "string" ? value.error : "unknown script error";
+        return;
+      case "composerSmokeResult":
+        this.composerSmokeResultCount += 1;
+        this.composerEnterDefaultPrevented = value.enterDefaultPrevented === true;
+        this.composerShiftEnterDefaultPrevented =
+          value.shiftEnterDefaultPrevented === true;
         return;
       case "askQuestion":
         if (typeof value.question === "string" && value.question.trim()) {
@@ -433,6 +469,9 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     usageCacheCount: 0,
     usageLastCacheDetailCount: 0,
     usageResetButtonCount: 0,
+    composerShortcutText: "",
+    userMessageSurfaceDeclared: false,
+    userMessageSurfaceDistinct: false,
     contentMode: undefined,
     tutorMessageRendered: false,
   };
@@ -463,6 +502,12 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
       diagnostics.usageLastCacheDetailCount,
     ),
     usageResetButtonCount: numberDiagnostic(diagnostics.usageResetButtonCount),
+    composerShortcutText:
+      typeof diagnostics.composerShortcutText === "string"
+        ? diagnostics.composerShortcutText
+        : "",
+    userMessageSurfaceDeclared: diagnostics.userMessageSurfaceDeclared === true,
+    userMessageSurfaceDistinct: diagnostics.userMessageSurfaceDistinct === true,
     contentMode:
       typeof diagnostics.contentMode === "string" ? diagnostics.contentMode : undefined,
     tutorMessageRendered: diagnostics.tutorMessageRendered === true,

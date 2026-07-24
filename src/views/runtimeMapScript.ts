@@ -7,6 +7,7 @@ export const runtimeMapScript = String.raw`
       content: document.getElementById('content'),
       composerInner: document.getElementById('composer-inner'),
       composerMode: document.getElementById('composer-mode'),
+      composerShortcut: document.getElementById('composer-shortcut'),
       configureModel: document.getElementById('configure-model'),
       modelProviderLabel: document.getElementById('model-provider-label'),
       pathCount: document.getElementById('path-count'),
@@ -44,10 +45,11 @@ export const runtimeMapScript = String.raw`
     document.getElementById('locate').addEventListener('click', submitQuestion);
     elements.configureModel.addEventListener('click', () => vscode.postMessage({ type: 'configureModel' }));
     elements.question.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        submitQuestion();
-      }
+      if (
+        event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229
+      ) return;
+      event.preventDefault();
+      submitQuestion();
     });
     elements.question.addEventListener('input', () => {
       resizeQuestion();
@@ -99,6 +101,13 @@ export const runtimeMapScript = String.raw`
             usageCacheCount: elements.content.querySelectorAll('.usage-cache').length,
             usageLastCacheDetailCount: elements.content.querySelectorAll('.usage-last .usage-cache-detail').length,
             usageResetButtonCount: elements.content.querySelectorAll('.usage-reset').length,
+            composerShortcutText: elements.composerShortcut.textContent,
+            userMessageSurfaceDeclared: Boolean(
+              getComputedStyle(document.documentElement)
+                .getPropertyValue('--cc-user-message')
+                .trim(),
+            ),
+            userMessageSurfaceDistinct: userMessageSurfaceDistinct(),
             contentMode: currentState.contentMode,
             tutorMessageRendered: Boolean(
               currentState.tutorMessage &&
@@ -106,8 +115,40 @@ export const runtimeMapScript = String.raw`
             ),
           },
         });
+      } else if (event.data?.type === 'smokeComposer') {
+        runComposerSmoke();
       }
     });
+
+    function runComposerSmoke() {
+      const originalValue = elements.question.value;
+      elements.question.value = '';
+      const enter = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      });
+      const shiftEnter = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      elements.question.dispatchEvent(enter);
+      elements.question.dispatchEvent(shiftEnter);
+      elements.question.value = originalValue;
+      vscode.postMessage({
+        type: 'composerSmokeResult',
+        enterDefaultPrevented: enter.defaultPrevented,
+        shiftEnterDefaultPrevented: shiftEnter.defaultPrevented,
+      });
+    }
+
+    function userMessageSurfaceDistinct() {
+      const message = elements.content.querySelector('.chat-turn.user .chat-body');
+      if (!message) return false;
+      return getComputedStyle(message).backgroundColor !== getComputedStyle(document.body).backgroundColor;
+    }
 
     function render(state) {
       requestPending = Boolean(state.requestPending || state.busyMessage);

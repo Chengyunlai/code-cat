@@ -219,6 +219,9 @@ export function activate(context: vscode.ExtensionContext): void {
         await vscode.commands.executeCommand("workbench.view.extension.codeCat");
         return runtimeMap.showForSmoke();
       }),
+      vscode.commands.registerCommand("codeCat.__runComposerSmoke", () =>
+        runtimeMap.runComposerSmoke(),
+      ),
       vscode.commands.registerCommand("codeCat.__modelProviderStatus", () =>
         modelProvider.status(),
       ),

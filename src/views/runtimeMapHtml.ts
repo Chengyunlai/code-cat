@@ -51,12 +51,12 @@ export function createRuntimeMapHtml(webview: vscode.Webview): string {
     <footer class="composer">
       <div class="composer-shell">
         <div id="composer-inner" class="composer-inner">
-          <textarea id="question" rows="1" aria-label="代码问题" aria-describedby="composer-mode" placeholder="你想理解哪段代码？"></textarea>
+          <textarea id="question" rows="1" aria-label="代码问题" aria-describedby="composer-mode composer-shortcut" placeholder="你想理解哪段代码？"></textarea>
           <div class="composer-meta">
             <div id="composer-mode" class="composer-mode" aria-live="polite">定位代码路径</div>
             <div class="composer-controls">
-              <div class="composer-shortcut" aria-label="快捷键 Command 或 Control 加 Enter">
-                <kbd>⌘/Ctrl</kbd><span aria-hidden="true">+</span><kbd>Enter</kbd>
+              <div id="composer-shortcut" class="composer-shortcut" aria-label="Enter 发送，Shift 加 Enter 换行">
+                <kbd>Enter</kbd><span>发送</span><span aria-hidden="true">·</span><kbd>Shift</kbd><span aria-hidden="true">+</span><kbd>Enter</kbd><span>换行</span>
               </div>
               <button id="locate" type="button" class="send" aria-label="定位代码路径" title="定位代码路径" disabled>
                 <span class="send-label">发送</span>
