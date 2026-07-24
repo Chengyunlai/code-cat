@@ -30,7 +30,8 @@
     "onView:codeCat.callStack",
     "onCommand:codeCat.startGuidedDebug",
     "onCommand:codeCat.configureModelProvider",
-    "onCommand:codeCat.testModelProvider"
+    "onCommand:codeCat.testModelProvider",
+    "onCommand:codeCat.resetProjectTokenUsage"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -68,6 +69,10 @@
       {
         "command": "codeCat.clearModelApiKey",
         "title": "Code Cat: Clear Stored API Key"
+      },
+      {
+        "command": "codeCat.resetProjectTokenUsage",
+        "title": "Code Cat: Reset Project Token Usage"
       },
       {
         "command": "codeCat.revealLocation",

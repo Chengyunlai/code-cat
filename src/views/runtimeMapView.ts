@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { TokenUsageSnapshot } from "../ai/tokenUsage";
 import { normalizePath } from "../core/locations";
 import { SessionStore } from "../core/sessionStore";
 import { LinkedBreakpointState } from "../debug/breakpoints";
@@ -18,6 +19,8 @@ export interface RuntimeMapActions {
   runDebugCommand(command: "continue" | "stepInto" | "stepOver"): Promise<void>;
   configureModelProvider(): Promise<void>;
   modelProviderStatus(): { readonly label: string; readonly detail?: string };
+  tokenUsageSnapshot(): TokenUsageSnapshot;
+  resetProjectTokenUsage(): Promise<void>;
 }
 
 interface WebviewMessage {
@@ -41,6 +44,13 @@ interface RenderedDiagnostics {
   readonly runtimeEvidenceGroupCount: number;
   readonly variablePreviewCount: number;
   readonly variablePreviewMaxLength: number;
+  readonly usageSectionCount: number;
+  readonly usageScopeCount: number;
+  readonly usageReportedCount: number;
+  readonly usageEstimatedCount: number;
+  readonly usageCacheCount: number;
+  readonly usageLastCacheDetailCount: number;
+  readonly usageResetButtonCount: number;
   readonly contentMode: string | undefined;
   readonly tutorMessageRendered: boolean;
 }
@@ -125,6 +135,13 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedRuntimeEvidenceGroupCount: number;
     readonly renderedVariablePreviewCount: number;
     readonly renderedVariablePreviewMaxLength: number;
+    readonly renderedUsageSectionCount: number;
+    readonly renderedUsageScopeCount: number;
+    readonly renderedUsageReportedCount: number;
+    readonly renderedUsageEstimatedCount: number;
+    readonly renderedUsageCacheCount: number;
+    readonly renderedUsageLastCacheDetailCount: number;
+    readonly renderedUsageResetButtonCount: number;
     readonly renderedContentMode: string | undefined;
     readonly tutorMessageRendered: boolean;
   } {
@@ -150,6 +167,14 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       renderedVariablePreviewCount: this.renderedDiagnostics.variablePreviewCount,
       renderedVariablePreviewMaxLength:
         this.renderedDiagnostics.variablePreviewMaxLength,
+      renderedUsageSectionCount: this.renderedDiagnostics.usageSectionCount,
+      renderedUsageScopeCount: this.renderedDiagnostics.usageScopeCount,
+      renderedUsageReportedCount: this.renderedDiagnostics.usageReportedCount,
+      renderedUsageEstimatedCount: this.renderedDiagnostics.usageEstimatedCount,
+      renderedUsageCacheCount: this.renderedDiagnostics.usageCacheCount,
+      renderedUsageLastCacheDetailCount:
+        this.renderedDiagnostics.usageLastCacheDetailCount,
+      renderedUsageResetButtonCount: this.renderedDiagnostics.usageResetButtonCount,
       renderedContentMode: this.renderedDiagnostics.contentMode,
       tutorMessageRendered: this.renderedDiagnostics.tutorMessageRendered,
     };
@@ -249,6 +274,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         requestPending: Boolean(state.requestKind || state.busyMessage),
         requestKind: state.requestKind,
         modelProvider: this.actions.modelProviderStatus(),
+        tokenUsage: this.actions.tokenUsageSnapshot(),
         debugging: Boolean(state.debugSessionId),
         workspaceOpen: Boolean(vscode.workspace.workspaceFolders?.length),
         chatMessages: state.chatMessages,
@@ -295,6 +321,10 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         return;
       case "configureModel":
         await this.actions.configureModelProvider();
+        this.postState();
+        return;
+      case "resetUsage":
+        await this.actions.resetProjectTokenUsage();
         this.postState();
         return;
       case "openFolder":
@@ -396,6 +426,13 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     runtimeEvidenceGroupCount: 0,
     variablePreviewCount: 0,
     variablePreviewMaxLength: 0,
+    usageSectionCount: 0,
+    usageScopeCount: 0,
+    usageReportedCount: 0,
+    usageEstimatedCount: 0,
+    usageCacheCount: 0,
+    usageLastCacheDetailCount: 0,
+    usageResetButtonCount: 0,
     contentMode: undefined,
     tutorMessageRendered: false,
   };
@@ -417,6 +454,15 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
     runtimeEvidenceGroupCount: numberDiagnostic(diagnostics.runtimeEvidenceGroupCount),
     variablePreviewCount: numberDiagnostic(diagnostics.variablePreviewCount),
     variablePreviewMaxLength: numberDiagnostic(diagnostics.variablePreviewMaxLength),
+    usageSectionCount: numberDiagnostic(diagnostics.usageSectionCount),
+    usageScopeCount: numberDiagnostic(diagnostics.usageScopeCount),
+    usageReportedCount: numberDiagnostic(diagnostics.usageReportedCount),
+    usageEstimatedCount: numberDiagnostic(diagnostics.usageEstimatedCount),
+    usageCacheCount: numberDiagnostic(diagnostics.usageCacheCount),
+    usageLastCacheDetailCount: numberDiagnostic(
+      diagnostics.usageLastCacheDetailCount,
+    ),
+    usageResetButtonCount: numberDiagnostic(diagnostics.usageResetButtonCount),
     contentMode:
       typeof diagnostics.contentMode === "string" ? diagnostics.contentMode : undefined,
     tutorMessageRendered: diagnostics.tutorMessageRendered === true,

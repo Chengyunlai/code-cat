@@ -4,6 +4,8 @@ import {
   modelProviderSecretName,
   normalizeModelBaseUrl,
 } from "./modelProviderSecurity";
+import { estimateTokenUsage, ModelClientResponse, ModelRequestKind } from "./tokenUsage";
+import { TokenUsageTracker } from "./tokenUsageTracker";
 
 export type ModelProviderId =
   | "vscode"
@@ -132,7 +134,10 @@ const PROVIDERS: readonly ProviderDefinition[] = [
 const PROVIDER_IDS = new Set<ModelProviderId>(PROVIDERS.map((provider) => provider.id));
 
 export class ModelProviderService {
-  public constructor(private readonly context: vscode.ExtensionContext) {}
+  public constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly usageTracker: TokenUsageTracker,
+  ) {}
 
   public status(): ModelProviderStatus {
     const provider = this.resolveCurrent();
@@ -143,34 +148,46 @@ export class ModelProviderService {
     };
   }
 
-  public async request(prompt: string, token: vscode.CancellationToken): Promise<string> {
+  public async request(
+    prompt: string,
+    token: vscode.CancellationToken,
+    requestKind: ModelRequestKind,
+  ): Promise<string> {
     const provider = this.resolveCurrent();
+    let response: ModelClientResponse;
     if (provider.definition.id === "vscode") {
-      return requestVsCodeModel(prompt, token);
-    }
-    if (!provider.definition.transport || !provider.baseUrl || !provider.model) {
-      throw new Error(
-        `${provider.definition.label} configuration is incomplete. Run “Code Cat: Configure Model Provider”.`,
+      response = await requestVsCodeModel(prompt, token);
+    } else {
+      if (!provider.definition.transport || !provider.baseUrl || !provider.model) {
+        throw new Error(
+          `${provider.definition.label} configuration is incomplete. Run “Code Cat: Configure Model Provider”.`,
+        );
+      }
+      const apiKey = await this.context.secrets.get(
+        modelProviderSecretName(provider.definition.id, provider.baseUrl),
+      );
+      if (!apiKey) {
+        throw new Error(
+          `${provider.definition.label} API Key has not been configured. Run “Code Cat: Configure Model Provider”.`,
+        );
+      }
+      response = await requestHttpModel(
+        {
+          transport: provider.definition.transport,
+          baseUrl: normalizeModelBaseUrl(provider.baseUrl),
+          model: provider.model,
+          apiKey,
+          prompt,
+        },
+        token,
       );
     }
-    const apiKey = await this.context.secrets.get(
-      modelProviderSecretName(provider.definition.id, provider.baseUrl),
-    );
-    if (!apiKey) {
-      throw new Error(
-        `${provider.definition.label} API Key has not been configured. Run “Code Cat: Configure Model Provider”.`,
-      );
-    }
-    return requestHttpModel(
-      {
-        transport: provider.definition.transport,
-        baseUrl: normalizeModelBaseUrl(provider.baseUrl),
-        model: provider.model,
-        apiKey,
-        prompt,
-      },
-      token,
-    );
+    await this.usageTracker.record(response.usage, {
+      requestKind,
+      provider: provider.definition.id,
+      model: response.model ?? provider.model,
+    });
+    return response.text;
   }
 
   public async configure(): Promise<void> {
@@ -281,7 +298,8 @@ export class ModelProviderService {
         title: `Code Cat 正在测试 ${status.label}`,
         cancellable: true,
       },
-      async (_progress, token) => this.request("Reply with exactly: OK", token),
+      async (_progress, token) =>
+        this.request("Reply with exactly: OK", token, "connection-test"),
     );
     void vscode.window.showInformationMessage(
       `模型连接成功：${status.label}${status.detail ? ` · ${status.detail}` : ""}（${answer.slice(0, 40)}）`,
@@ -356,7 +374,7 @@ export class ModelProviderService {
 async function requestVsCodeModel(
   prompt: string,
   token: vscode.CancellationToken,
-): Promise<string> {
+): Promise<ModelClientResponse> {
   const models = await vscode.lm.selectChatModels();
   const model = models[0];
   if (!model) {
@@ -373,7 +391,32 @@ async function requestVsCodeModel(
   for await (const fragment of response.text) {
     result += fragment;
   }
-  return result.trim();
+  const text = result.trim();
+  const fallback = estimateTokenUsage(prompt, text);
+  let inputTokens = fallback.inputTokens;
+  let outputTokens = fallback.outputTokens;
+  try {
+    [inputTokens, outputTokens] = await Promise.all([
+      model.countTokens(prompt, token),
+      model.countTokens(text, token),
+    ]);
+  } catch (error) {
+    if (error instanceof vscode.CancellationError) {
+      throw error;
+    }
+  }
+  return {
+    text,
+    model: model.id,
+    usage: {
+      source: "estimated",
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+  };
 }
 
 function isProviderId(value: string): value is ModelProviderId {

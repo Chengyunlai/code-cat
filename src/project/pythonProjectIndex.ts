@@ -27,6 +27,8 @@ type WorkspaceRelativePythonPath = string & {
 
 const SYMBOL_PATTERN = /^(\s*)(async\s+def|def|class)\s+([A-Za-z_]\w*)\s*([^:]*)\s*:/;
 const EXCLUDE_GLOB = "**/{.git,.venv,venv,node_modules,__pycache__,dist,build,.tox,.mypy_cache,.pytest_cache}/**";
+const MAX_PROMPT_SYMBOLS = 600;
+const STABLE_PROMPT_SYMBOL_PREFIX = 560;
 
 export class PythonProjectIndex implements vscode.Disposable {
   private cachedSnapshot: PythonProjectSnapshot | undefined;
@@ -108,16 +110,10 @@ export class PythonProjectIndex implements vscode.Disposable {
   public async promptContext(question: string): Promise<string> {
     const project = await this.snapshot();
     const terms = tokenizeQuestion(question);
-    const rankedSymbols = project.symbols
-      .map((symbol) => ({ symbol, score: scoreSymbol(symbol, terms) }))
-      .sort((left, right) => right.score - left.score || left.symbol.file.localeCompare(right.symbol.file));
-
-    const relevant = rankedSymbols.filter((item) => item.score > 0).slice(0, 120);
-    const broad = rankedSymbols.slice(0, Math.max(0, 600 - relevant.length));
-    const chosen = deduplicateSymbols([...relevant, ...broad]).slice(0, 600);
+    const chosen = selectPromptSymbols(project.symbols, terms);
     const fileList = project.files.slice(0, 400).join("\n");
     const symbolList = chosen
-      .map(({ symbol }) => `${symbol.file}:${symbol.line} ${symbol.signature}`)
+      .map((symbol) => `${symbol.file}:${symbol.line} ${symbol.signature}`)
       .join("\n");
 
     return [
@@ -215,16 +211,38 @@ function scoreSymbol(symbol: PythonSymbol, terms: readonly string[]): number {
   return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
 }
 
-function deduplicateSymbols(
-  entries: readonly { readonly symbol: PythonSymbol; readonly score: number }[],
-): readonly { readonly symbol: PythonSymbol; readonly score: number }[] {
-  const seen = new Set<string>();
-  return entries.filter(({ symbol }) => {
-    const key = `${symbol.absolutePath}:${symbol.line}`;
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
+function selectPromptSymbols(
+  symbols: readonly PythonSymbol[],
+  terms: readonly string[],
+): readonly PythonSymbol[] {
+  const stableOrder = [...symbols].sort(
+    (left, right) =>
+      left.file.localeCompare(right.file) ||
+      left.line - right.line ||
+      left.name.localeCompare(right.name),
+  );
+  const stablePrefix = stableOrder.slice(0, STABLE_PROMPT_SYMBOL_PREFIX);
+  const selectedKeys = new Set(stablePrefix.map(symbolKey));
+  const relevantTail = symbols
+    .map((symbol) => ({ symbol, score: scoreSymbol(symbol, terms) }))
+    .filter(({ symbol, score }) => score > 0 && !selectedKeys.has(symbolKey(symbol)))
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.symbol.file.localeCompare(right.symbol.file) ||
+        left.symbol.line - right.symbol.line,
+    )
+    .slice(0, MAX_PROMPT_SYMBOLS - stablePrefix.length)
+    .map(({ symbol }) => symbol);
+  for (const symbol of relevantTail) {
+    selectedKeys.add(symbolKey(symbol));
+  }
+  const stableFallback = stableOrder.filter(
+    (symbol) => !selectedKeys.has(symbolKey(symbol)),
+  );
+  return [...stablePrefix, ...relevantTail, ...stableFallback].slice(0, MAX_PROMPT_SYMBOLS);
+}
+
+function symbolKey(symbol: PythonSymbol): string {
+  return `${symbol.absolutePath}:${symbol.line}:${symbol.name}`;
 }

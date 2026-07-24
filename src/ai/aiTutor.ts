@@ -78,7 +78,7 @@ export class AiTutor {
       .slice(-8)
       .map((message) => `${message.role}: ${message.text.slice(0, 1_000)}`)
       .join("\n");
-    const response = await this.request(
+    const response = await this.modelProvider.request(
       [
         "You are Code Cat, a concise assistant inside a Python code-understanding tool.",
         "Decide whether the user wants normal conversation or a concrete code execution path.",
@@ -90,12 +90,13 @@ export class AiTutor {
         "Answer in the user's language. Return JSON only, without Markdown fences.",
         "Do not invent project facts that are absent from the index.",
         "",
+        projectContext,
+        "",
         recentConversation ? `Recent conversation:\n${recentConversation}\n` : "",
         `User message: ${question}`,
-        "",
-        projectContext,
       ].join("\n"),
       token,
+      "question",
     );
     let parsed: ModelQuestionResponse;
     try {
@@ -126,7 +127,7 @@ export class AiTutor {
   ): Promise<RoutePlan> {
     await this.ensureProjectReady();
     const projectContext = await this.projectIndex.promptContext(question);
-    const response = await this.request(
+    const response = await this.modelProvider.request(
       [
         "You are a senior Python engineer planning a guided code-reading session.",
         "Infer the most likely end-to-end path related to the user's question.",
@@ -135,11 +136,12 @@ export class AiTutor {
         ...routeInstructions(),
         "Do not wrap JSON in Markdown fences.",
         "",
-        `User question: ${question}`,
-        "",
         projectContext,
+        "",
+        `User question: ${question}`,
       ].join("\n"),
       token,
+      "route",
     );
     return this.parseRouteResponse(question, response);
   }
@@ -160,7 +162,7 @@ export class AiTutor {
     const variables = pause.variables
       .map((variable) => `${variable.name}: ${variable.type ?? "?"} = ${variable.value}`)
       .join("\n");
-    const response = await this.request(
+    const response = await this.modelProvider.request(
       [
         "You are a patient Python debugging tutor.",
         "Explain this real debugger pause with exactly this JSON shape:",
@@ -180,6 +182,7 @@ export class AiTutor {
         variables || "No variables were captured.",
       ].join("\n"),
       token,
+      "pause",
     );
     return {
       id: randomUUID(),
@@ -187,10 +190,6 @@ export class AiTutor {
       pauseId: pause.id,
       explanation: parsePauseExplanation(response),
     };
-  }
-
-  private async request(prompt: string, token: vscode.CancellationToken): Promise<string> {
-    return this.modelProvider.request(prompt, token);
   }
 
   private async ensureProjectReady(): Promise<void> {

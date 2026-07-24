@@ -3,12 +3,14 @@ const http = require("node:http");
 const vscode = require("vscode");
 const { AiTutor } = require("../../dist/ai/aiTutor");
 const { requestHttpModel } = require("../../dist/ai/modelClients");
+const { TokenUsageTracker } = require("../../dist/ai/tokenUsageTracker");
 const {
   modelProviderSecretName,
   normalizeModelBaseUrl,
 } = require("../../dist/ai/modelProviderSecurity");
 const { SessionStore } = require("../../dist/core/sessionStore");
 const { normalizeRuntimeVariables } = require("../../dist/debug/runtimeEvidence");
+const { PythonProjectIndex } = require("../../dist/project/pythonProjectIndex");
 
 const TIMEOUT_MS = 30_000;
 
@@ -25,6 +27,7 @@ async function run() {
     "codeCat.configureModelProvider",
     "codeCat.testModelProvider",
     "codeCat.clearModelApiKey",
+    "codeCat.resetProjectTokenUsage",
     "codeCat.explainPause",
     "codeCat.continue",
     "codeCat.stepInto",
@@ -38,11 +41,13 @@ async function run() {
     "codeCat.__seedStructuredPause",
     "codeCat.__seedPauseTutorError",
     "codeCat.__seedRouteGuidance",
+    "codeCat.__seedUsage",
   ]) {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
 
   await testHttpModelClients();
+  await testTokenUsageTracking();
   await testRoutePreflight();
   testRuntimeEvidenceConstraints();
   testConversationState();
@@ -55,6 +60,24 @@ async function run() {
     () => vscode.commands.executeCommand("codeCat.__showSmokeView"),
     (shown) => shown === true,
     "the Runtime Map view to resolve",
+  );
+  await vscode.commands.executeCommand("codeCat.__seedUsage");
+  const renderedUsageState = await waitForValue(
+    () => vscode.commands.executeCommand("codeCat.__smokeState"),
+    (state) =>
+      state?.runtimeMap?.renderedUsageSectionCount === 1 &&
+      state.runtimeMap.renderedUsageScopeCount === 3 &&
+      state.runtimeMap.renderedUsageReportedCount >= 2 &&
+      state.runtimeMap.renderedUsageEstimatedCount >= 2 &&
+      state.runtimeMap.renderedUsageCacheCount >= 1 &&
+      state.runtimeMap.scriptError === undefined,
+    "the Runtime Map to render reported, estimated, and cached token usage",
+  );
+  assert.equal(renderedUsageState.runtimeMap.renderedUsageResetButtonCount, 1);
+  assert.equal(
+    renderedUsageState.runtimeMap.renderedUsageLastCacheDetailCount,
+    1,
+    "the latest request must show its cache-read amount, including zero",
   );
   await vscode.commands.executeCommand("codeCat.__seedChat");
   const renderedChatState = await waitForValue(
@@ -320,6 +343,104 @@ async function run() {
     }
     replaceSourceBreakpointsAt(checkoutUri, breakpointLine, originalBreakpoints);
   }
+}
+
+async function testTokenUsageTracking() {
+  const values = new Map();
+  const workspaceState = {
+    keys: () => [...values.keys()],
+    get: (key, fallback) => (values.has(key) ? values.get(key) : fallback),
+    update: async (key, value) => {
+      if (value === undefined) {
+        values.delete(key);
+      } else {
+        values.set(key, value);
+      }
+    },
+  };
+  const reported = {
+    source: "reported",
+    inputTokens: 120,
+    outputTokens: 16,
+    totalTokens: 136,
+    cacheReadTokens: 40,
+    cacheWriteTokens: 0,
+  };
+  const estimated = {
+    source: "estimated",
+    inputTokens: 30,
+    outputTokens: 5,
+    totalTokens: 35,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
+  const tracker = new TokenUsageTracker(workspaceState);
+  await tracker.record(reported, {
+    requestKind: "question",
+    provider: "openai",
+    model: "gpt-test",
+  });
+  await tracker.record(estimated, {
+    requestKind: "pause",
+    provider: "vscode",
+    model: "copilot-test",
+  });
+
+  const snapshot = tracker.snapshot();
+  assert.equal(snapshot.last.requestKind, "pause");
+  assert.equal(snapshot.last.provider, "vscode");
+  assert.deepEqual(snapshot.last.usage, estimated);
+  assert.deepEqual(snapshot.session, {
+    reported: {
+      inputTokens: 120,
+      outputTokens: 16,
+      totalTokens: 136,
+      cacheReadTokens: 40,
+      cacheWriteTokens: 0,
+    },
+    estimated: {
+      inputTokens: 30,
+      outputTokens: 5,
+      totalTokens: 35,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    },
+  });
+  assert.deepEqual(snapshot.project, snapshot.session);
+
+  const restored = new TokenUsageTracker(workspaceState);
+  assert.deepEqual(restored.snapshot().project, snapshot.project);
+  assert.deepEqual(restored.snapshot().session, {
+    reported: emptyTokenCounts(),
+    estimated: emptyTokenCounts(),
+  });
+  assert.equal(restored.snapshot().last, undefined);
+
+  tracker.clearSession();
+  assert.deepEqual(tracker.snapshot().session, {
+    reported: emptyTokenCounts(),
+    estimated: emptyTokenCounts(),
+  });
+  assert.equal(tracker.snapshot().last, undefined);
+  assert.deepEqual(tracker.snapshot().project, snapshot.project);
+
+  await tracker.resetProject();
+  assert.deepEqual(tracker.snapshot().project, {
+    reported: emptyTokenCounts(),
+    estimated: emptyTokenCounts(),
+  });
+  tracker.dispose();
+  restored.dispose();
+}
+
+function emptyTokenCounts() {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
 }
 
 function testRuntimeEvidenceConstraints() {
@@ -624,6 +745,16 @@ async function testRoutePreflight() {
 
     const folder = vscode.workspace.workspaceFolders?.[0];
     assert.ok(folder, "the route-intent test needs the smoke workspace");
+    const stableIndex = new PythonProjectIndex();
+    try {
+      assert.equal(
+        await stableIndex.promptContext("checkout"),
+        await stableIndex.promptContext("inventory"),
+        "small-project context must stay byte-for-byte stable across questions",
+      );
+    } finally {
+      stableIndex.dispose();
+    }
     const checkoutPath = vscode.Uri.joinPath(
       folder.uri,
       "order_service",
@@ -634,6 +765,7 @@ async function testRoutePreflight() {
       "order_service",
       "multiline.py",
     ).fsPath;
+    let routePrompt = "";
     const routeTutor = new AiTutor(
       {
         readinessIssue: async () => undefined,
@@ -642,8 +774,9 @@ async function testRoutePreflight() {
           candidate.endsWith("multiline.py") ? multilinePath : checkoutPath,
       },
       {
-        request: async () =>
-          JSON.stringify({
+        request: async (prompt) => {
+          routePrompt = prompt;
+          return JSON.stringify({
             kind: "route",
             summary: "Checkout route",
             nodes: [
@@ -664,13 +797,25 @@ async function testRoutePreflight() {
                 confidence: "high",
               },
             ],
-          }),
+          });
+        },
       },
     );
     const routeResult = await routeTutor.answerQuestion(
       "结账请求经过哪些函数？",
-      [],
+      [
+        { id: "earlier-user", role: "user", text: "先看入口" },
+        { id: "earlier-assistant", role: "assistant", text: "好的" },
+      ],
       cancellation.token,
+    );
+    assert.ok(
+      routePrompt.indexOf("Python files (1)") < routePrompt.indexOf("Recent conversation:"),
+      "stable project context must precede changing conversation text for prefix caching",
+    );
+    assert.ok(
+      routePrompt.indexOf("Recent conversation:") < routePrompt.indexOf("User message:"),
+      "recent conversation should remain immediately before the current user message",
     );
     assert.equal(routeResult.kind, "route");
     assert.equal(routeResult.route.nodes.length, 2);
@@ -696,14 +841,52 @@ async function testHttpModelClients() {
     requests.push({ url: request.url, headers: request.headers, body: JSON.parse(body) });
     response.setHeader("content-type", "application/json");
     if (request.url === "/responses") {
-      response.end(JSON.stringify({ output: [{ content: [{ text: "openai-ok" }] }] }));
+      response.end(
+        JSON.stringify({
+          output: [{ content: [{ text: "openai-ok" }] }],
+          usage: {
+            input_tokens: 120,
+            output_tokens: 16,
+            total_tokens: 136,
+            input_tokens_details: { cached_tokens: 40 },
+          },
+        }),
+      );
     } else if (request.url === "/chat/completions") {
-      response.end(JSON.stringify({ choices: [{ message: { content: "chat-ok" } }] }));
+      response.end(
+        JSON.stringify({
+          choices: [{ message: { content: "chat-ok" } }],
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 12,
+            total_tokens: 92,
+            prompt_tokens_details: { cached_tokens: 30 },
+          },
+        }),
+      );
     } else if (request.url === "/messages") {
-      response.end(JSON.stringify({ content: [{ type: "text", text: "anthropic-ok" }] }));
+      response.end(
+        JSON.stringify({
+          content: [{ type: "text", text: "anthropic-ok" }],
+          usage: {
+            input_tokens: 100,
+            output_tokens: 14,
+            cache_read_input_tokens: 60,
+            cache_creation_input_tokens: 10,
+          },
+        }),
+      );
     } else if (request.url === "/models/gemini-test:generateContent") {
       response.end(
-        JSON.stringify({ candidates: [{ content: { parts: [{ text: "gemini-ok" }] } }] }),
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: "gemini-ok" }] } }],
+          usageMetadata: {
+            promptTokenCount: 90,
+            candidatesTokenCount: 11,
+            totalTokenCount: 101,
+            cachedContentTokenCount: 55,
+          },
+        }),
       );
     } else if (request.url === "/redirect/chat/completions") {
       response.statusCode = 307;
@@ -715,6 +898,16 @@ async function testHttpModelClients() {
           response.end(JSON.stringify({ choices: [{ message: { content: "late" } }] }));
         }
       }, 200);
+    } else if (request.url === "/without-usage/chat/completions") {
+      response.end(JSON.stringify({ choices: [{ message: { content: "ok" } }] }));
+    } else if (request.url === "/without-usage/responses") {
+      response.end(JSON.stringify({ output_text: "ok" }));
+    } else if (request.url === "/without-usage/messages") {
+      response.end(JSON.stringify({ content: [{ type: "text", text: "ok" }] }));
+    } else if (request.url === "/without-usage/models/gemini-test:generateContent") {
+      response.end(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }),
+      );
     } else {
       response.statusCode = 404;
       response.end(JSON.stringify({ error: { message: "unexpected smoke path" } }));
@@ -730,24 +923,64 @@ async function testHttpModelClients() {
   const cancellation = new vscode.CancellationTokenSource();
   try {
     const common = { baseUrl, model: "smoke-model", apiKey: "smoke-secret", prompt: "ping" };
-    assert.equal(
+    assert.deepEqual(
       await requestHttpModel({ ...common, transport: "openai-responses" }, cancellation.token),
-      "openai-ok",
+      {
+        text: "openai-ok",
+        usage: {
+          source: "reported",
+          inputTokens: 120,
+          outputTokens: 16,
+          totalTokens: 136,
+          cacheReadTokens: 40,
+          cacheWriteTokens: 0,
+        },
+      },
     );
-    assert.equal(
+    assert.deepEqual(
       await requestHttpModel({ ...common, transport: "openai-chat" }, cancellation.token),
-      "chat-ok",
+      {
+        text: "chat-ok",
+        usage: {
+          source: "reported",
+          inputTokens: 80,
+          outputTokens: 12,
+          totalTokens: 92,
+          cacheReadTokens: 30,
+          cacheWriteTokens: 0,
+        },
+      },
     );
-    assert.equal(
+    assert.deepEqual(
       await requestHttpModel({ ...common, transport: "anthropic" }, cancellation.token),
-      "anthropic-ok",
+      {
+        text: "anthropic-ok",
+        usage: {
+          source: "reported",
+          inputTokens: 170,
+          outputTokens: 14,
+          totalTokens: 184,
+          cacheReadTokens: 60,
+          cacheWriteTokens: 10,
+        },
+      },
     );
-    assert.equal(
+    assert.deepEqual(
       await requestHttpModel(
         { ...common, transport: "gemini", model: "gemini-test" },
         cancellation.token,
       ),
-      "gemini-ok",
+      {
+        text: "gemini-ok",
+        usage: {
+          source: "reported",
+          inputTokens: 90,
+          outputTokens: 11,
+          totalTokens: 101,
+          cacheReadTokens: 55,
+          cacheWriteTokens: 0,
+        },
+      },
     );
     assert.equal(requests.length, 4);
     assert.equal(requests[0].headers.authorization, "Bearer smoke-secret");
@@ -758,6 +991,54 @@ async function testHttpModelClients() {
     assert.equal(requests[3].headers["x-goog-api-key"], "smoke-secret");
     assert.equal(requests[3].body.contents[0].parts[0].text, "ping");
 
+    assert.deepEqual(
+      await requestHttpModel(
+        {
+          ...common,
+          baseUrl: `${baseUrl}/without-usage`,
+          transport: "openai-chat",
+          prompt: "中文ab",
+        },
+        cancellation.token,
+      ),
+      {
+        text: "ok",
+        usage: {
+          source: "estimated",
+          inputTokens: 3,
+          outputTokens: 1,
+          totalTokens: 4,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+      },
+    );
+    for (const transport of ["openai-responses", "anthropic", "gemini"]) {
+      assert.deepEqual(
+        await requestHttpModel(
+          {
+            ...common,
+            baseUrl: `${baseUrl}/without-usage`,
+            transport,
+            model: transport === "gemini" ? "gemini-test" : common.model,
+            prompt: "中文ab",
+          },
+          cancellation.token,
+        ),
+        {
+          text: "ok",
+          usage: {
+            source: "estimated",
+            inputTokens: 3,
+            outputTokens: 1,
+            totalTokens: 4,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+        },
+      );
+    }
+
     await assert.rejects(
       requestHttpModel(
         { ...common, baseUrl: `${baseUrl}/redirect`, transport: "openai-chat" },
@@ -765,7 +1046,7 @@ async function testHttpModelClients() {
       ),
     );
     assert.deepEqual(
-      requests.slice(4).map((request) => request.url),
+      requests.slice(8).map((request) => request.url),
       ["/redirect/chat/completions"],
       "redirects must not receive a second request carrying the authorization header",
     );

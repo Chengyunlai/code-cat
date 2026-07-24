@@ -12,6 +12,7 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 - Redact common credential-like variable names before display or model use.
 - Navigate between route nodes, historical pauses, stack frames, and source code.
 - Ask the model to explain the current pause from runtime evidence.
+- Track reported or estimated token usage for the last request, current conversation, and current project.
 - Follow one guided workspace with task/debug status, current lesson, execution-path,
   call-stack, and variable tabs, plus a contextual question box fixed at the bottom.
 
@@ -106,6 +107,37 @@ Key for the current provider and API root.
 If Code Cat reports `No VS Code language model is available`, either sign in to a provider that
 exposes a model through the VS Code Language Model API, or configure one of the direct API
 providers above.
+
+### Model usage and repeated-project optimization
+
+After the first model request, a compact **Model usage** section appears at the bottom of the
+Runtime Map. It separates three scopes:
+
+- **Last request** shows input, output, cache-read, and total tokens, plus whether the value was
+  reported by the provider or estimated locally.
+- **Current conversation** accumulates reported and estimated values separately. Running
+  **Code Cat: New Conversation** clears this scope and the last-request value.
+- **Current project** keeps accumulating across conversations. It is stored in VS Code
+  `workspaceState`, never in the project repository. Use **Reset project token usage** in the
+  Runtime Map or run **Code Cat: Reset Project Token Usage** to clear only this local total.
+
+OpenAI Responses, OpenAI-compatible/NewAPI, Anthropic, and Gemini usage fields are normalized
+into the same display. When a direct API omits usage, Code Cat estimates CJK characters at about
+one token each and other text at about four characters per token. VS Code built-in models use
+their `countTokens` API when available. All such values remain visibly marked **Estimated**:
+they help compare context size, but are not a bill or a guarantee of billable tokens. Model
+connection tests are also real requests and are recorded as such.
+
+For repeated questions in the same project, Code Cat reuses its in-memory Python index until a
+Python file changes. Stable instructions, the file list, and the first 560 deterministically
+ordered symbol rows are placed before the small question-ranked symbol tail, recent conversation,
+and the current question. This gives providers with automatic prefix caching a long reusable
+prompt prefix without removing the 600-symbol broad fallback. When a provider reports cache
+reads, the Runtime Map
+shows both the cached-token count and its share of input tokens. Cache behavior remains controlled
+by the provider; a zero or absent cache count does not indicate an error. A later retrieval pass
+can reduce the broad symbol fallback further without weakening Chinese questions that contain no
+English symbol terms.
 
 ### 4. First guided-debug session
 
@@ -202,10 +234,11 @@ Set `CODE_CAT_VSCODE_EXTENSIONS_DIR` only when the isolated target itself must m
 
 `npm run smoke:vscode` launches isolated Extension Hosts using the installed VS Code application
 and explicit Microsoft Python extension dependencies. It verifies activation, model-provider
-command registration, linked breakpoint creation and restoration, debugpy startup, real pauses,
-captured stack frames and variables, native call-stack data, Runtime Map rendering, Step Over,
-and a `[project.scripts]` entry module that defines—but does not directly call—its `main()`
-function.
+command registration, provider-specific usage normalization and fallback estimation, local usage
+ledger behavior, linked breakpoint creation and restoration, debugpy startup, real pauses,
+captured stack frames and variables, native call-stack data, Runtime Map and token-usage rendering,
+Step Over, and a `[project.scripts]` entry module that defines—but does not directly call—its
+`main()` function.
 
 The route is a hypothesis; the runtime trace is evidence. Code Cat deliberately displays both.
 

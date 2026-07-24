@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { estimateTokenUsage, ModelClientResponse } from "./tokenUsage";
 
 export type HttpModelTransport =
   | "openai-responses"
@@ -15,12 +16,19 @@ export interface HttpModelRequest {
   readonly timeoutMs?: number;
 }
 
+interface ReportedUsageFields {
+  readonly input: string;
+  readonly output: string;
+  readonly total: string;
+  readonly cacheReadTokens?: number;
+}
+
 const REQUEST_TIMEOUT_MS = 90_000;
 
 export async function requestHttpModel(
   request: HttpModelRequest,
   token: vscode.CancellationToken,
-): Promise<string> {
+): Promise<ModelClientResponse> {
   switch (request.transport) {
     case "openai-responses":
       return requestOpenAiResponses(request, token);
@@ -36,7 +44,7 @@ export async function requestHttpModel(
 async function requestOpenAiResponses(
   request: HttpModelRequest,
   token: vscode.CancellationToken,
-): Promise<string> {
+): Promise<ModelClientResponse> {
   const payload = await postJson(
     joinUrl(request.baseUrl, "responses"),
     {
@@ -53,7 +61,11 @@ async function requestOpenAiResponses(
   );
   const direct = readString(payload, "output_text");
   if (direct) {
-    return direct.trim();
+    return {
+      text: direct.trim(),
+      usage:
+        readOpenAiResponsesUsage(payload) ?? estimateTokenUsage(request.prompt, direct.trim()),
+    };
   }
   const output = readArray(payload, "output");
   const text = output
@@ -63,13 +75,29 @@ async function requestOpenAiResponses(
       return value ? [value] : [];
     })
     .join("");
-  return requireModelText(text, "OpenAI Responses API");
+  const normalizedText = requireModelText(text, "OpenAI Responses API");
+  return {
+    text: normalizedText,
+    usage:
+      readOpenAiResponsesUsage(payload) ?? estimateTokenUsage(request.prompt, normalizedText),
+  };
+}
+
+function readOpenAiResponsesUsage(payload: unknown): ModelClientResponse["usage"] | undefined {
+  const usage = readObject(readObject(payload)?.usage);
+  const inputDetails = readObject(usage?.input_tokens_details);
+  return readStandardReportedUsage(usage, {
+    input: "input_tokens",
+    output: "output_tokens",
+    total: "total_tokens",
+    cacheReadTokens: readNumber(inputDetails, "cached_tokens") ?? 0,
+  });
 }
 
 async function requestOpenAiChat(
   request: HttpModelRequest,
   token: vscode.CancellationToken,
-): Promise<string> {
+): Promise<ModelClientResponse> {
   const payload = await postJson(
     joinUrl(request.baseUrl, "chat/completions"),
     {
@@ -87,13 +115,31 @@ async function requestOpenAiChat(
   const firstChoice = readArray(payload, "choices")[0];
   const message = readObject(firstChoice)?.message;
   const text = readObject(message)?.content;
-  return requireModelText(typeof text === "string" ? text : "", "OpenAI-compatible API");
+  const normalizedText = requireModelText(
+    typeof text === "string" ? text : "",
+    "OpenAI-compatible API",
+  );
+  return {
+    text: normalizedText,
+    usage: readOpenAiChatUsage(payload) ?? estimateTokenUsage(request.prompt, normalizedText),
+  };
+}
+
+function readOpenAiChatUsage(payload: unknown): ModelClientResponse["usage"] | undefined {
+  const usage = readObject(readObject(payload)?.usage);
+  const promptDetails = readObject(usage?.prompt_tokens_details);
+  return readStandardReportedUsage(usage, {
+    input: "prompt_tokens",
+    output: "completion_tokens",
+    total: "total_tokens",
+    cacheReadTokens: readNumber(promptDetails, "cached_tokens") ?? 0,
+  });
 }
 
 async function requestAnthropic(
   request: HttpModelRequest,
   token: vscode.CancellationToken,
-): Promise<string> {
+): Promise<ModelClientResponse> {
   const payload = await postJson(
     joinUrl(request.baseUrl, "messages"),
     {
@@ -115,13 +161,46 @@ async function requestAnthropic(
       return value ? [value] : [];
     })
     .join("");
-  return requireModelText(text, "Anthropic Messages API");
+  const normalizedText = requireModelText(text, "Anthropic Messages API");
+  return {
+    text: normalizedText,
+    usage: readAnthropicUsage(payload) ?? estimateTokenUsage(request.prompt, normalizedText),
+  };
+}
+
+function readAnthropicUsage(payload: unknown): ModelClientResponse["usage"] | undefined {
+  const usage = readObject(readObject(payload)?.usage);
+  const reportedInputTokens = readNumber(usage, "input_tokens");
+  const reportedOutputTokens = readNumber(usage, "output_tokens");
+  const reportedCacheReadTokens = readNumber(usage, "cache_read_input_tokens");
+  const reportedCacheWriteTokens = readNumber(usage, "cache_creation_input_tokens");
+  if (
+    reportedInputTokens === undefined &&
+    reportedOutputTokens === undefined &&
+    reportedCacheReadTokens === undefined &&
+    reportedCacheWriteTokens === undefined
+  ) {
+    return undefined;
+  }
+  const uncachedInputTokens = reportedInputTokens ?? 0;
+  const outputTokens = reportedOutputTokens ?? 0;
+  const cacheReadTokens = reportedCacheReadTokens ?? 0;
+  const cacheWriteTokens = reportedCacheWriteTokens ?? 0;
+  const inputTokens = uncachedInputTokens + cacheReadTokens + cacheWriteTokens;
+  return {
+    source: "reported",
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+  };
 }
 
 async function requestGemini(
   request: HttpModelRequest,
   token: vscode.CancellationToken,
-): Promise<string> {
+): Promise<ModelClientResponse> {
   const model = encodeURIComponent(request.model);
   const payload = await postJson(
     joinUrl(request.baseUrl, `models/${model}:generateContent`),
@@ -144,7 +223,47 @@ async function requestGemini(
       return value ? [value] : [];
     })
     .join("");
-  return requireModelText(text, "Gemini generateContent API");
+  const normalizedText = requireModelText(text, "Gemini generateContent API");
+  return {
+    text: normalizedText,
+    usage: readGeminiUsage(payload) ?? estimateTokenUsage(request.prompt, normalizedText),
+  };
+}
+
+function readGeminiUsage(payload: unknown): ModelClientResponse["usage"] | undefined {
+  const usage = readObject(readObject(payload)?.usageMetadata);
+  return readStandardReportedUsage(usage, {
+    input: "promptTokenCount",
+    output: "candidatesTokenCount",
+    total: "totalTokenCount",
+    cacheReadTokens: readNumber(usage, "cachedContentTokenCount") ?? 0,
+  });
+}
+
+function readStandardReportedUsage(
+  usage: Record<string, unknown> | undefined,
+  fields: ReportedUsageFields,
+): ModelClientResponse["usage"] | undefined {
+  const reportedInputTokens = readNumber(usage, fields.input);
+  const reportedOutputTokens = readNumber(usage, fields.output);
+  const reportedTotalTokens = readNumber(usage, fields.total);
+  if (
+    reportedInputTokens === undefined &&
+    reportedOutputTokens === undefined &&
+    reportedTotalTokens === undefined
+  ) {
+    return undefined;
+  }
+  const inputTokens = reportedInputTokens ?? 0;
+  const outputTokens = reportedOutputTokens ?? 0;
+  return {
+    source: "reported",
+    inputTokens,
+    outputTokens,
+    totalTokens: reportedTotalTokens ?? inputTokens + outputTokens,
+    cacheReadTokens: fields.cacheReadTokens ?? 0,
+    cacheWriteTokens: 0,
+  };
 }
 
 async function postJson(
@@ -248,4 +367,11 @@ function readArray(value: unknown, key: string): readonly unknown[] {
 function readString(value: unknown, key: string): string | undefined {
   const candidate = readObject(value)?.[key];
   return typeof candidate === "string" ? candidate : undefined;
+}
+
+function readNumber(value: unknown, key: string): number | undefined {
+  const candidate = readObject(value)?.[key];
+  return typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0
+    ? candidate
+    : undefined;
 }

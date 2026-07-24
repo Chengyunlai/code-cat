@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { AiTutor, TutorGuidanceError } from "./ai/aiTutor";
 import { ModelProviderService } from "./ai/modelProviderService";
+import { TokenUsageTracker } from "./ai/tokenUsageTracker";
 import { revealLocation } from "./core/locations";
 import { SessionActionCoordinator } from "./core/sessionActionCoordinator";
 import { SessionStore } from "./core/sessionStore";
@@ -25,7 +26,8 @@ import {
 export function activate(context: vscode.ExtensionContext): void {
   const store = new SessionStore();
   const projectIndex = new PythonProjectIndex();
-  const modelProvider = new ModelProviderService(context);
+  const usageTracker = new TokenUsageTracker(context.workspaceState);
+  const modelProvider = new ModelProviderService(context, usageTracker);
   const tutor = new AiTutor(projectIndex, modelProvider);
   const breakpoints = new ManagedBreakpointService();
   const observer = new DebugSessionObserver(store, () => breakpoints.clear());
@@ -75,17 +77,23 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand("codeCat.configureModelProvider");
     },
     modelProviderStatus: () => modelProvider.status(),
+    tokenUsageSnapshot: () => usageTracker.snapshot(),
+    resetProjectTokenUsage: async () => {
+      await vscode.commands.executeCommand("codeCat.resetProjectTokenUsage");
+    },
   };
   const runtimeMap = new RuntimeMapView(context.extensionUri, store, actions);
 
   context.subscriptions.push(
     store,
     projectIndex,
+    usageTracker,
     observer,
     callStackTree,
     breakpoints,
     sourceGuidance,
     runtimeMap,
+    usageTracker.onDidChange(() => runtimeMap.refresh()),
     vscode.languages.registerCodeLensProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
     vscode.languages.registerHoverProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
     vscode.window.registerTreeDataProvider("codeCat.callStack", callStackTree),
@@ -117,6 +125,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("codeCat.clearSession", () => {
       if (store.clear()) {
         breakpoints.clear();
+        usageTracker.clearSession();
       } else {
         void vscode.window.showInformationMessage(
           "Wait for the current Code Cat request to finish before clearing the session.",
@@ -143,6 +152,18 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       await runModelProviderCommand(() => modelProvider.clearCurrentApiKey());
+    }),
+    vscode.commands.registerCommand("codeCat.resetProjectTokenUsage", async () => {
+      const confirmed = await vscode.window.showWarningMessage(
+        "重置当前项目的 Token 用量累计？此操作只清除 Code Cat 的本地统计，不影响厂商账单。",
+        { modal: true },
+        "重置",
+      );
+      if (confirmed !== "重置") {
+        return;
+      }
+      await usageTracker.resetProject();
+      void vscode.window.showInformationMessage("已重置当前项目的 Token 用量累计。");
     }),
     vscode.commands.registerCommand(
       "codeCat.revealLocation",
@@ -205,6 +226,32 @@ export function activate(context: vscode.ExtensionContext): void {
         store.addChatExchange(
           "如何继续？",
           "查看 `checkout`，再对照 **调用栈**。",
+        );
+      }),
+      vscode.commands.registerCommand("codeCat.__seedUsage", async () => {
+        await usageTracker.resetProject();
+        usageTracker.clearSession();
+        await usageTracker.record(
+          {
+            source: "reported",
+            inputTokens: 120,
+            outputTokens: 16,
+            totalTokens: 136,
+            cacheReadTokens: 40,
+            cacheWriteTokens: 0,
+          },
+          { requestKind: "question", provider: "openai", model: "gpt-smoke" },
+        );
+        await usageTracker.record(
+          {
+            source: "estimated",
+            inputTokens: 30,
+            outputTokens: 5,
+            totalTokens: 35,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          { requestKind: "pause", provider: "vscode", model: "copilot-smoke" },
         );
       }),
       vscode.commands.registerCommand("codeCat.__seedTutorError", () => {

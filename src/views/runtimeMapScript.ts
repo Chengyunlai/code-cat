@@ -34,6 +34,7 @@ export const runtimeMapScript = String.raw`
       requestPending: false,
       requestKind: undefined,
       modelProvider: { label: 'VS Code 内置模型' },
+      tokenUsage: undefined,
       debugging: false,
       workspaceOpen: true,
       chatMessages: [],
@@ -91,6 +92,13 @@ export const runtimeMapScript = String.raw`
               ...Array.from(elements.content.querySelectorAll('.variable-preview-value'))
                 .map((element) => element.textContent.length),
             ),
+            usageSectionCount: elements.content.querySelectorAll('.token-usage').length,
+            usageScopeCount: elements.content.querySelectorAll('[data-usage-scope]').length,
+            usageReportedCount: elements.content.querySelectorAll('.usage-source.reported').length,
+            usageEstimatedCount: elements.content.querySelectorAll('.usage-source.estimated').length,
+            usageCacheCount: elements.content.querySelectorAll('.usage-cache').length,
+            usageLastCacheDetailCount: elements.content.querySelectorAll('.usage-last .usage-cache-detail').length,
+            usageResetButtonCount: elements.content.querySelectorAll('.usage-reset').length,
             contentMode: currentState.contentMode,
             tutorMessageRendered: Boolean(
               currentState.tutorMessage &&
@@ -145,6 +153,7 @@ export const runtimeMapScript = String.raw`
       else if (activeTab === 'stack') renderStack(view, state);
       else if (activeTab === 'variables') renderVariables(view, state);
       else renderOverview(view, state);
+      renderTokenUsage(view, state.tokenUsage);
       elements.content.appendChild(view);
     }
 
@@ -304,6 +313,154 @@ export const runtimeMapScript = String.raw`
       } else {
         renderEmpty(root, state);
       }
+    }
+
+    function renderTokenUsage(root, snapshot) {
+      if (!snapshot || !hasTokenUsage(snapshot)) return;
+      const section = document.createElement('section');
+      section.className = 'token-usage';
+      section.setAttribute('aria-label', '模型用量');
+
+      const head = document.createElement('div');
+      head.className = 'usage-head';
+      const headingCopy = document.createElement('div');
+      const title = document.createElement('h2');
+      title.textContent = '模型用量';
+      const subtitle = document.createElement('p');
+      subtitle.textContent = '报告值与本地估算分开累计';
+      headingCopy.append(title, subtitle);
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'text-action usage-reset';
+      reset.textContent = '重置项目累计';
+      reset.addEventListener('click', () => vscode.postMessage({ type: 'resetUsage' }));
+      head.append(headingCopy, reset);
+      section.appendChild(head);
+
+      if (snapshot.last) {
+        const last = document.createElement('div');
+        last.className = 'usage-last';
+        last.dataset.usageScope = 'last';
+        const lastMeta = document.createElement('div');
+        lastMeta.className = 'usage-last-meta';
+        const lastLabel = document.createElement('span');
+        lastLabel.textContent = '最近一次 · ' + requestKindLabel(snapshot.last.requestKind);
+        const source = document.createElement('span');
+        source.className = 'usage-source ' + snapshot.last.usage.source;
+        source.textContent = snapshot.last.usage.source === 'reported' ? '厂商报告' : '估算';
+        lastMeta.append(lastLabel, source);
+        const model = document.createElement('div');
+        model.className = 'usage-model';
+        model.textContent = snapshot.last.model
+          ? snapshot.last.provider + ' · ' + snapshot.last.model
+          : snapshot.last.provider;
+        const metrics = document.createElement('div');
+        metrics.className = 'usage-last-metrics';
+        metrics.textContent = usageMetricsText(snapshot.last.usage);
+        last.append(lastMeta, model, metrics);
+        const cache = document.createElement('div');
+        cache.className = 'usage-cache usage-cache-detail';
+        cache.textContent = usageCacheText(snapshot.last.usage);
+        last.appendChild(cache);
+        section.appendChild(last);
+      }
+
+      const scopes = document.createElement('div');
+      scopes.className = 'usage-scopes';
+      appendUsageScope(scopes, '当前会话', 'session', snapshot.session);
+      appendUsageScope(scopes, '当前项目', 'project', snapshot.project);
+      section.appendChild(scopes);
+      const note = document.createElement('p');
+      note.className = 'usage-note';
+      note.textContent = '估算值仅用于观察上下文规模，不等同于厂商账单。';
+      section.appendChild(note);
+      root.appendChild(section);
+    }
+
+    function appendUsageScope(root, label, scope, totals) {
+      const row = document.createElement('div');
+      row.className = 'usage-scope';
+      row.dataset.usageScope = scope;
+      const name = document.createElement('div');
+      name.className = 'usage-scope-name';
+      name.textContent = label;
+      const values = document.createElement('div');
+      values.className = 'usage-scope-values';
+      appendUsageSource(values, 'reported', '厂商报告', totals?.reported);
+      appendUsageSource(values, 'estimated', '估算', totals?.estimated);
+      if (!values.childElementCount) {
+        const empty = document.createElement('span');
+        empty.className = 'usage-empty';
+        empty.textContent = '暂无模型请求';
+        values.appendChild(empty);
+      }
+      row.append(name, values);
+      root.appendChild(row);
+    }
+
+    function appendUsageSource(root, source, label, counts) {
+      if (!hasTokenCounts(counts)) return;
+      const line = document.createElement('div');
+      line.className = 'usage-source-line';
+      const sourceLabel = document.createElement('span');
+      sourceLabel.className = 'usage-source ' + source;
+      sourceLabel.textContent = label;
+      const metrics = document.createElement('span');
+      metrics.textContent = usageMetricsText(counts);
+      line.append(sourceLabel, metrics);
+      if (counts.cacheReadTokens > 0 || counts.cacheWriteTokens > 0) {
+        const cache = document.createElement('span');
+        cache.className = 'usage-cache';
+        cache.textContent = usageCacheText(counts);
+        line.appendChild(cache);
+      }
+      root.appendChild(line);
+    }
+
+    function usageMetricsText(counts) {
+      return '输入 ' + formatTokenCount(counts.inputTokens) +
+        ' · 输出 ' + formatTokenCount(counts.outputTokens) +
+        ' · 总计 ' + formatTokenCount(counts.totalTokens);
+    }
+
+    function usageCacheText(counts) {
+      const parts = ['缓存读 ' + formatTokenCount(counts.cacheReadTokens)];
+      if (counts.cacheReadTokens > 0) {
+        const ratio = counts.inputTokens > 0
+          ? Math.round((counts.cacheReadTokens / counts.inputTokens) * 100)
+          : 0;
+        if (ratio > 0) parts[0] += ' · ' + ratio + '%';
+      }
+      if (counts.cacheWriteTokens > 0) {
+        parts.push('缓存写 ' + formatTokenCount(counts.cacheWriteTokens));
+      }
+      return parts.join(' · ');
+    }
+
+    function formatTokenCount(value) {
+      return new Intl.NumberFormat('zh-CN').format(Number(value) || 0);
+    }
+
+    function hasTokenUsage(snapshot) {
+      return Boolean(snapshot.last) ||
+        hasTokenCounts(snapshot.session?.reported) ||
+        hasTokenCounts(snapshot.session?.estimated) ||
+        hasTokenCounts(snapshot.project?.reported) ||
+        hasTokenCounts(snapshot.project?.estimated);
+    }
+
+    function hasTokenCounts(counts) {
+      return Boolean(counts && (
+        counts.inputTokens || counts.outputTokens || counts.totalTokens ||
+        counts.cacheReadTokens || counts.cacheWriteTokens
+      ));
+    }
+
+    function requestKindLabel(kind) {
+      if (kind === 'route') return '路径定位';
+      if (kind === 'pause') return '暂停解释';
+      if (kind === 'connection-test') return '连接测试';
+      return '问题回答';
     }
 
     function renderTutorMessage(root, state) {
