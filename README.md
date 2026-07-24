@@ -210,6 +210,20 @@ npm run check
 npm run package
 ```
 
+### Optional design-review workflow
+
+Runtime Map interaction polish follows Emil Kowalski's design-engineering principles: frequent
+keyboard actions stay immediate, pointer feedback stays under 160 ms, transitions name their
+exact properties, and motion respects reduced-motion preferences. Contributors who want the same
+review skill can install it with:
+
+```bash
+npx skills@latest add emilkowalski/skills
+```
+
+This skill is a contributor tool, not a Code Cat runtime dependency. Restart the coding agent or
+open a new task after installation so the newly installed skill is discovered.
+
 Open this repository in VS Code and press `F5`. The extension-development window opens the bundled `examples/python-order-service` workspace. `npm run package` creates a versioned `code-cat-*.vsix` file in the repository root.
 
 The real VS Code smoke test is optional and requires the VS Code application plus the Microsoft Python extensions:

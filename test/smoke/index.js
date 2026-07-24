@@ -153,6 +153,32 @@ async function run() {
   assert.equal(structuredPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 2);
   assert.equal(structuredPauseState.runtimeMap.renderedVariablePreviewCount, 3);
   assert.ok(structuredPauseState.runtimeMap.renderedVariablePreviewMaxLength <= 120);
+  const interactionMotion = structuredPauseState.runtimeMap.renderedInteractionMotion;
+  assert.match(
+    interactionMotion.actionTransitionProperty,
+    /transform/u,
+    "action buttons must provide restrained press feedback",
+  );
+  assert.doesNotMatch(
+    interactionMotion.actionTransitionProperty,
+    /(?:^|,\s*)all(?:,|$)/u,
+    "action buttons must transition explicit properties instead of all",
+  );
+  assert.notEqual(
+    interactionMotion.actionTransitionDuration,
+    "0s",
+    "pointer feedback must use a short non-zero transition",
+  );
+  assert.match(
+    interactionMotion.sourceLinkTransitionProperty,
+    /transform/u,
+    "source navigation must share the same tactile press feedback",
+  );
+  assert.equal(
+    interactionMotion.tabTransitionDuration,
+    "0s",
+    "high-frequency keyboard tab navigation must remain immediate",
+  );
   await vscode.commands.executeCommand("codeCat.__seedPauseTutorError");
   const preservedPauseState = await waitForValue(
     () => vscode.commands.executeCommand("codeCat.__smokeState"),

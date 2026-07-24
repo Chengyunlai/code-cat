@@ -108,6 +108,12 @@ export const runtimeMapScript = String.raw`
                 .trim(),
             ),
             userMessageSurfaceDistinct: userMessageSurfaceDistinct(),
+            interactionMotion: {
+              actionTransitionProperty: computedStyleValue('.action', 'transitionProperty'),
+              actionTransitionDuration: computedStyleValue('.action', 'transitionDuration'),
+              sourceLinkTransitionProperty: computedStyleValue('.source-link', 'transitionProperty'),
+              tabTransitionDuration: computedStyleValue('.tab', 'transitionDuration'),
+            },
             contentMode: currentState.contentMode,
             tutorMessageRendered: Boolean(
               currentState.tutorMessage &&
@@ -148,6 +154,11 @@ export const runtimeMapScript = String.raw`
       const message = elements.content.querySelector('.chat-turn.user .chat-body');
       if (!message) return false;
       return getComputedStyle(message).backgroundColor !== getComputedStyle(document.body).backgroundColor;
+    }
+
+    function computedStyleValue(selector, property) {
+      const element = document.querySelector(selector);
+      return element ? getComputedStyle(element)[property] : '';
     }
 
     function render(state) {

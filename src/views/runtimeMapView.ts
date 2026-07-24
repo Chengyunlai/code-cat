@@ -37,6 +37,13 @@ interface WebviewMessage {
   readonly shiftEnterDefaultPrevented?: unknown;
 }
 
+interface InteractionMotionDiagnostics {
+  readonly actionTransitionProperty: string;
+  readonly actionTransitionDuration: string;
+  readonly sourceLinkTransitionProperty: string;
+  readonly tabTransitionDuration: string;
+}
+
 interface RenderedDiagnostics {
   readonly chatMessageCount: number;
   readonly chatRoleLabelCount: number;
@@ -56,6 +63,7 @@ interface RenderedDiagnostics {
   readonly composerShortcutText: string;
   readonly userMessageSurfaceDeclared: boolean;
   readonly userMessageSurfaceDistinct: boolean;
+  readonly interactionMotion: InteractionMotionDiagnostics;
   readonly contentMode: string | undefined;
   readonly tutorMessageRendered: boolean;
 }
@@ -153,6 +161,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedComposerShortcutText: string;
     readonly renderedUserMessageSurfaceDeclared: boolean;
     readonly renderedUserMessageSurfaceDistinct: boolean;
+    readonly renderedInteractionMotion: InteractionMotionDiagnostics;
     readonly composerSmokeResultCount: number;
     readonly composerEnterDefaultPrevented: boolean;
     readonly composerShiftEnterDefaultPrevented: boolean;
@@ -194,6 +203,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         this.renderedDiagnostics.userMessageSurfaceDeclared,
       renderedUserMessageSurfaceDistinct:
         this.renderedDiagnostics.userMessageSurfaceDistinct,
+      renderedInteractionMotion: this.renderedDiagnostics.interactionMotion,
       composerSmokeResultCount: this.composerSmokeResultCount,
       composerEnterDefaultPrevented: this.composerEnterDefaultPrevented,
       composerShiftEnterDefaultPrevented: this.composerShiftEnterDefaultPrevented,
@@ -472,6 +482,7 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     composerShortcutText: "",
     userMessageSurfaceDeclared: false,
     userMessageSurfaceDistinct: false,
+    interactionMotion: emptyInteractionMotionDiagnostics(),
     contentMode: undefined,
     tutorMessageRendered: false,
   };
@@ -508,6 +519,7 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
         : "",
     userMessageSurfaceDeclared: diagnostics.userMessageSurfaceDeclared === true,
     userMessageSurfaceDistinct: diagnostics.userMessageSurfaceDistinct === true,
+    interactionMotion: parseInteractionMotionDiagnostics(diagnostics.interactionMotion),
     contentMode:
       typeof diagnostics.contentMode === "string" ? diagnostics.contentMode : undefined,
     tutorMessageRendered: diagnostics.tutorMessageRendered === true,
@@ -516,6 +528,38 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
 
 function numberDiagnostic(value: unknown): number {
   return typeof value === "number" ? value : 0;
+}
+
+function stringDiagnostic(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function emptyInteractionMotionDiagnostics(): InteractionMotionDiagnostics {
+  return {
+    actionTransitionProperty: "",
+    actionTransitionDuration: "",
+    sourceLinkTransitionProperty: "",
+    tabTransitionDuration: "",
+  };
+}
+
+function parseInteractionMotionDiagnostics(
+  value: unknown,
+): InteractionMotionDiagnostics {
+  if (value === null || typeof value !== "object") {
+    return emptyInteractionMotionDiagnostics();
+  }
+  const diagnostics = value as Partial<
+    Record<keyof InteractionMotionDiagnostics, unknown>
+  >;
+  return {
+    actionTransitionProperty: stringDiagnostic(diagnostics.actionTransitionProperty),
+    actionTransitionDuration: stringDiagnostic(diagnostics.actionTransitionDuration),
+    sourceLinkTransitionProperty: stringDiagnostic(
+      diagnostics.sourceLinkTransitionProperty,
+    ),
+    tabTransitionDuration: stringDiagnostic(diagnostics.tabTransitionDuration),
+  };
 }
 
 function closestRouteNodeId(
