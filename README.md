@@ -1,6 +1,12 @@
 # Code Cat
 
-Code Cat is an early VS Code prototype for **debug-driven Python code reading**. It turns a learner's question into a candidate reading route, links that route to real breakpoints, and updates the map from the actual call stack whenever `debugpy` pauses.
+Code Cat is an early VS Code prototype for **debug-driven Python code reading**. It turns a
+learner's question into a focused answer with a core source location, then optionally links that
+location to a real breakpoint and updates the reading path from the actual call stack whenever
+`debugpy` pauses.
+
+> **Project status:** active prototype. The current release targets VS Code and Python projects;
+> APIs and stored workspace data may change before a stable release.
 
 ## Current vertical slice
 
@@ -18,9 +24,10 @@ Code Cat is an early VS Code prototype for **debug-driven Python code reading**.
 - Track reported or estimated token usage for the last request, current conversation, and current project.
 - Keep user messages visually distinct with a restrained theme-aware surface; press **Enter** to
   send and **Shift+Enter** to insert a line break.
-- Keep **Conversation** as the primary surface. Add **Path** only after a concrete code
-  exploration exists, then add **Call Stack** and **Variables** only after the learner chooses
-  a breakpoint or Code Cat captures a real pause.
+- Keep **Conversation** as the primary surface. Every code-path answer includes one core source
+  location with context and a direct editor jump. The learner can then reveal the path
+  progressively or choose **Use a breakpoint to follow this**; **Call Stack** and **Variables**
+  remain runtime evidence rather than model-planned content.
 
 ## Install in VS Code
 
@@ -159,12 +166,13 @@ conversation title beside **Code Cat /** to use the native VS Code picker:
 - Up to 20 recent non-empty conversations are stored in VS Code `workspaceState` for the current
   workspace. No conversation file is written to the Python repository.
 
-For a code question, the initial answer addresses only that question and introduces a **Current
-code exploration** row. Open **Path** to read the first key location. Select **Continue to next
+For a code question, the initial answer addresses only that question and introduces one **Core
+code location** with its file, exact line, and the reason it is the best starting point. Select
+**Open code** to jump directly to that line. Open **Path map** or select **Continue to next
 location** only when that evidence is useful; Code Cat then reveals one additional location in
 the map, CodeLens, and source hover. A planned path is a reading hypothesis, not a runtime call
-stack. Use **Ask about this direction** whenever you want to name the branch, function, or
-failure case you care about before revealing more.
+stack. Use **Ask about this location** whenever you want to name the branch, function, or failure
+case you care about before revealing more.
 
 ### 4. First guided-debug session
 
@@ -174,19 +182,25 @@ failure case you care about before revealing more.
    **Shift+Enter** to add a line break. Your messages use a subtle background so they stay
    distinct from Code Cat's replies. Code Cat automatically chooses conversation or code-path
    mode.
-3. For a code-path question, read the initial answer, open **Path**, and follow the first
-   revealed location. Use **Continue to next location** to deepen the path one step at a time.
-4. Toggle a teaching breakpoint on a revealed route node. The **Call Stack**, **Variables**, and
-   native Code Cat call-stack view appear only after this debug intent exists. When possible,
-   Code Cat refines a
-   function declaration to its first executable statement.
-5. Select **Start guided debug**. Code Cat resolves what to run in this order:
+3. For a code-path question, read the initial answer and its **Core code location**. Select
+   **Open code** to inspect the exact source line, or deepen the **Path map** one location at a
+   time.
+4. If you want to observe the process, select **Use a breakpoint to follow this**. Code Cat places
+   a temporary teaching breakpoint at the core location and starts guided debugging. The
+   **Path map**, **Call Stack**, and **Variables** surfaces then update from the debugging state;
+   stack frames and variables are populated only after a real pause. When possible, Code Cat
+   refines a function declaration to its first executable statement.
+5. Code Cat resolves what to run in this order:
    - a Python/debugpy configuration already present in `.vscode/launch.json`;
    - a console entry point declared under `[project.scripts]` in `pyproject.toml`;
    - the currently open Python file as a final fallback.
 6. Choose an entry when Code Cat finds multiple launch configurations or project scripts.
-7. When debugpy pauses, return to the Code Cat activity-bar view to inspect the runtime trace, call stack, and variables. VS Code may automatically switch to its Run and Debug view when the session starts.
-8. Select **Explain current pause**, **Continue**, **Step Into**, or **Step Over**.
+7. When debugpy pauses, return to the Code Cat activity-bar view to inspect the runtime trace,
+   call stack, and variables. VS Code may automatically switch to its Run and Debug view when
+   the session starts.
+8. Select **Explain current pause**, **Continue**, **Step Into**, or **Step Over**. If the process
+   exits without hitting the teaching breakpoint, Code Cat reports that no runtime evidence was
+   captured and offers **Run again**.
 
 If the debug session was already running before Code Cat began observing it, stop it and start it again from Code Cat so the full runtime chain can be captured.
 

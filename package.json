@@ -5,6 +5,14 @@
   "version": "0.1.4",
   "publisher": "local",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chengyunlai/code-cat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chengyunlai/code-cat/issues"
+  },
+  "homepage": "https://github.com/chengyunlai/code-cat#readme",
   "engines": {
     "vscode": "^1.105.0",
     "node": ">=22"
