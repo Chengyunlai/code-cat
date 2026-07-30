@@ -1,54 +1,50 @@
 # Code Cat
 
-Code Cat is an early VS Code prototype for **debug-driven Python code reading**. It turns a
-learner's question into a focused answer with a core source location, then optionally links that
-location to a real breakpoint and updates the reading path from the actual call stack whenever
-`debugpy` pauses.
+**简体中文** | [English](./README.en.md)
 
-> **Project status:** active prototype. The current release targets VS Code and Python projects;
-> APIs and stored workspace data may change before a stable release.
+Code Cat 是一个面向 Python 项目的 VS Code 代码阅读插件。它先把用户的问题转成聚焦的解释和一个核心代码位置，再由用户决定是否继续展开代码路径，或通过真实断点观察调用栈与变量。
 
-## Current vertical slice
+> **项目状态：** 正在积极开发的早期原型。目前支持 VS Code 和 Python 项目；稳定版本发布前，插件 API 和工作区数据结构仍可能调整。
 
-- Build a cached structural index of Python files, classes, functions, and async functions.
-- Ask a configured VS Code or bring-your-own-key model to plan up to eight high-value reading
-  stops, while revealing them one at a time instead of presenting a complete chain up front.
-- Open each revealed stop in the editor and toggle a linked source breakpoint from the map.
-- Observe Python/debugpy Debug Adapter Protocol traffic without replacing the Python debugger.
-- Capture the real call stack and bounded top-frame variables at each pause.
-- Redact common credential-like variable names before display or model use.
-- Navigate between route nodes, historical pauses, stack frames, and source code.
-- Ask the model to explain the current pause from runtime evidence.
-- Keep an independent, workspace-local history of code-reading conversations and reopen them
-  from the conversation title in the Code Cat header.
-- Track reported or estimated token usage for the last request, current conversation, and current project.
-- Keep user messages visually distinct with a restrained theme-aware surface; press **Enter** to
-  send and **Shift+Enter** to insert a line break.
-- Keep **Conversation** as the primary surface. Every code-path answer includes one core source
-  location with context and a direct editor jump. The learner can then reveal the path
-  progressively or choose **Use a breakpoint to follow this**; **Call Stack** and **Variables**
-  remain runtime evidence rather than model-planned content.
+## Code Cat 能做什么
 
-## Install in VS Code
+- 为 Python 文件、类、函数和异步函数建立可复用的结构索引。
+- 根据当前问题规划最多 8 个高价值代码位置，但默认只展示最相关的一处。
+- 在回答下方给出“核心代码位置”、上下文说明和精确源码跳转。
+- 让用户逐步展开路径，而不是一次性展示整条推测链路。
+- 可选地在核心位置放置 Code Cat 临时断点并启动 `debugpy`。
+- 从真实暂停状态采集调用栈和经过约束的顶层变量。
+- 基于运行时证据解释“发生了什么、为什么重要、下一步看哪里”。
+- 在文件、路径节点、历史暂停、栈帧和源码之间联动导航。
+- 在当前工作区保存最近的代码阅读会话，不向项目目录写入聊天文件。
+- 追踪单次请求、当前会话和当前项目的模型 Token 用量。
+- 在展示或发送变量前遮盖常见的密钥、令牌和密码字段。
 
-### Prerequisites
+Code Cat 把三类信息严格分开：
 
-- VS Code 1.105 or newer.
-- Python 3.9 or newer installed and available to VS Code; the opened project may require a
-  newer version.
-- Either a model exposed through the VS Code Language Model API, or an API key for one of the providers listed below.
-- Node.js 22 or newer only when building Code Cat from source.
+1. **模型回答**只回答当前问题。
+2. **路径图**是代码阅读假设，需要逐步验证。
+3. **调用栈和变量**只来自真实调试暂停，不由模型虚构。
 
-### 1. Install the Python extensions
+## 在 VS Code 中安装
 
-Install these extensions from the VS Code Extensions view:
+### 环境要求
 
-- **Python** — `ms-python.python` (required)
-- **Python Debugger** — `ms-python.debugpy` (required)
-- **Pylance** — `ms-python.vscode-pylance` (recommended)
-- **Python Environments** — `ms-python.vscode-python-envs` (recommended)
+- VS Code 1.105 或更高版本。
+- Python 3.9 或更高版本；被阅读的项目可能要求更高版本。
+- VS Code 内置模型，或下文支持的任一模型服务 API Key。
+- 只有从源码构建 Code Cat 时才需要 Node.js 22 或更高版本。
 
-They can also be installed from a terminal:
+### 1. 安装 Python 扩展
+
+请先在 VS Code 扩展市场安装：
+
+- **Python** — `ms-python.python`，必需
+- **Python Debugger** — `ms-python.debugpy`，必需
+- **Pylance** — `ms-python.vscode-pylance`，推荐
+- **Python Environments** — `ms-python.vscode-python-envs`，推荐
+
+也可以通过终端安装：
 
 ```bash
 code --install-extension ms-python.python
@@ -57,194 +53,162 @@ code --install-extension ms-python.vscode-pylance
 code --install-extension ms-python.vscode-python-envs
 ```
 
-On macOS, if `code` is not found, run **Shell Command: Install 'code' command in PATH** from the VS Code Command Palette. Alternatively, use the application-bundled CLI:
+macOS 中如果找不到 `code` 命令，请在 VS Code 命令面板执行 **Shell Command: Install 'code' command in PATH**。
+
+也可以直接使用 VS Code 自带的命令：
 
 ```bash
-"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension ms-python.python
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
+  --install-extension ms-python.python
 ```
 
-### 2. Install Code Cat
+### 2. 安装 Code Cat
 
-Code Cat is not published to the VS Code Marketplace or a release download yet. Follow [Build and test from source](#build-and-test-from-source) to generate a `code-cat-*.vsix` package, then either:
+Code Cat 暂未发布到 VS Code Marketplace。请按照[从源码构建与测试](#从源码构建与测试)生成 `code-cat-*.vsix`，然后：
 
-1. Open the VS Code Extensions view.
-2. Open the `...` menu.
-3. Select **Install from VSIX...** and choose the file.
+1. 打开 VS Code 扩展视图。
+2. 点击扩展视图右上角的 `...`。
+3. 选择 **Install from VSIX...**。
+4. 选择生成的 VSIX 文件。
 
-Or install it from a terminal:
+也可以通过终端安装：
 
 ```bash
 code --install-extension "/absolute/path/to/code-cat-X.Y.Z.vsix" --force
 ```
 
-Replace the example path and `X.Y.Z` with the exact package path and version printed by `npm run package`.
+请将示例路径和 `X.Y.Z` 替换为 `npm run package` 输出的实际文件与版本。
 
-After installation, run **Developer: Reload Window** from the Command Palette so the Code Cat activity-bar icon and commands are loaded.
+安装后在命令面板执行 **Developer: Reload Window**，让 Code Cat 的活动栏入口和命令生效。
 
-### 3. Select Python and configure the model provider
+### 3. 选择 Python 并配置模型
 
-1. Open the Python project as a folder, not just an individual file.
-2. Run **Python: Select Interpreter** and choose the environment that can run the project.
-3. Click the model-provider pill in the Code Cat header, or run **Code Cat: Configure Model Provider**.
-4. Choose a provider, confirm its model, and enter its API key when required.
-5. Select **Test connection** after saving, or run **Code Cat: Test Model Provider** later.
+1. 以文件夹方式打开 Python 项目，而不是只打开单个文件。
+2. 执行 **Python: Select Interpreter**，选择能够运行当前项目的环境。
+3. 点击 Code Cat 顶部的模型入口，或执行 **Code Cat: Configure Model Provider**。
+4. 选择模型服务，确认模型名，并在需要时输入 API Key。
+5. 保存后选择 **Test connection**，或执行 **Code Cat: Test Model Provider**。
 
-The default option is **VS Code built-in model**, which keeps the previous Language Model API
-behavior and does not ask Code Cat for a key. Direct API configuration supports:
+默认选项是 **VS Code built-in model**，它使用 VS Code Language Model API，不需要向 Code Cat 单独提供 Key。
 
-| Provider preset | Protocol | Extra input |
+直接 API 配置支持：
+
+| 服务预设 | 协议 | 需要补充的信息 |
 | --- | --- | --- |
-| OpenAI | Responses API | API key and editable model |
-| Anthropic Claude | Messages API | API key and editable model |
-| Google Gemini | `generateContent` | API key and editable model |
-| DeepSeek | OpenAI-compatible Chat Completions | API key and editable model |
-| Alibaba Qwen | DashScope OpenAI-compatible API | API key and editable model |
-| Moonshot / Kimi | OpenAI-compatible API | API key and editable model |
-| Zhipu GLM | OpenAI-compatible API | API key and editable model |
-| Doubao / Volcengine Ark | OpenAI-compatible API | API key and inference endpoint ID |
-| NewAPI | OpenAI-compatible API | API key, Base URL, and channel model name |
-| Other compatible service | OpenAI-compatible API | API key, Base URL, and model name |
+| OpenAI | Responses API | API Key、可编辑模型名 |
+| Anthropic Claude | Messages API | API Key、可编辑模型名 |
+| Google Gemini | `generateContent` | API Key、可编辑模型名 |
+| DeepSeek | OpenAI 兼容 Chat Completions | API Key、可编辑模型名 |
+| 阿里云 Qwen | DashScope OpenAI 兼容接口 | API Key、可编辑模型名 |
+| Moonshot / Kimi | OpenAI 兼容接口 | API Key、可编辑模型名 |
+| 智谱 GLM | OpenAI 兼容接口 | API Key、可编辑模型名 |
+| 豆包 / 火山方舟 | OpenAI 兼容接口 | API Key、推理接入点 ID |
+| NewAPI | OpenAI 兼容接口 | API Key、Base URL、渠道模型名 |
+| 其他兼容服务 | OpenAI 兼容接口 | API Key、Base URL、模型名 |
 
-For NewAPI, enter the API root such as `https://newapi.example.com/v1`, not the full
-`/chat/completions` endpoint. The model must be the exact model or alias exposed by that
-NewAPI deployment. HTTPS is required except for `localhost` development endpoints.
+NewAPI 的 Base URL 应填写 API 根地址，例如 `https://newapi.example.com/v1`，不要填写完整的 `/chat/completions` 地址。
 
-API keys are stored with VS Code `SecretStorage`; they are not written to the repository,
-workspace settings, user `settings.json`, logs, or model prompts. For NewAPI and compatible
-services, each Key is bound to its normalized API root, so changing the Base URL never reuses
-the old endpoint's Key. Code Cat also rejects HTTP redirects so an authorization header cannot
-silently follow one. Non-secret providers, per-provider models, and Base URLs remain visible
-under `Code Cat › AI` in VS Code Settings. Run **Code Cat: Clear Stored API Key** to delete the
-Key for the current provider and API root.
+模型名必须是 NewAPI 实际暴露的模型或别名。除本地开发的 `localhost` 外，Code Cat 要求使用 HTTPS。
 
-If Code Cat reports `No VS Code language model is available`, either sign in to a provider that
-exposes a model through the VS Code Language Model API, or configure one of the direct API
-providers above.
+## API Key、隐私与模型用量
 
-### Model usage and repeated-project optimization
+API Key 保存在 VS Code `SecretStorage` 中，不会写入代码仓库、工作区设置、用户 `settings.json`、日志或模型提示词。
 
-After the first model request, Code Cat shows a compact pulse item in the **VS Code status bar**.
-Hover it for a quick summary, or click it / run **Code Cat: Show Model Usage** to open the
-native VS Code picker with three scopes:
+对于 NewAPI 和其他兼容服务，每个 Key 都绑定到规范化后的 API 根地址。更换 Base URL 后，Code Cat 不会复用旧地址的 Key，也不会携带授权头跟随 HTTP 重定向。
 
-- **Last request** shows input, output, cache-read, and total tokens, plus whether the value was
-  reported by the provider or estimated locally.
-- **Current conversation** accumulates reported and estimated values separately. Running
-  **Code Cat: New Conversation** clears this scope and the last-request value. Reopening a
-  historical conversation also starts a fresh local usage window; the project total remains.
-- **Current project** keeps accumulating across conversations. It is stored in VS Code
-  `workspaceState`, never in the project repository. Select **Reset project total** in the
-  usage picker or run **Code Cat: Reset Project Token Usage** to clear only this local total.
+非敏感的服务类型、模型名和 Base URL 会显示在 VS Code 的 `Code Cat › AI` 设置中。执行 **Code Cat: Clear Stored API Key** 可以删除当前服务和地址对应的 Key。
 
-OpenAI Responses, OpenAI-compatible/NewAPI, Anthropic, and Gemini usage fields are normalized
-into the same display. When a direct API omits usage, Code Cat estimates CJK characters at about
-one token each and other text at about four characters per token. VS Code built-in models use
-their `countTokens` API when available. All such values remain visibly marked **Estimated**:
-they help compare context size, but are not a bill or a guarantee of billable tokens. Model
-connection tests are also real requests and are recorded as such.
+首次模型请求后，Code Cat 会在 VS Code 状态栏显示简洁的用量入口。点击它或执行 **Code Cat: Show Model Usage**，可以查看：
 
-For repeated questions in the same project, Code Cat reuses its in-memory Python index until a
-Python file changes. Stable instructions, the file list, and the first 560 deterministically
-ordered symbol rows are placed before the small question-ranked symbol tail, recent conversation,
-and the current question. This gives providers with automatic prefix caching a long reusable
-prompt prefix without removing the 600-symbol broad fallback. When a provider reports cache
-reads, the usage picker shows the cached-token counts. Cache behavior remains controlled by the
-provider; a zero or absent cache count does not indicate an error. A later retrieval pass can
-reduce the broad symbol fallback further without weakening Chinese questions that contain no
-English symbol terms.
+- **单次请求**：输入、输出、缓存读取和总 Token。
+- **当前会话**：区分服务端上报值和本地估算值。
+- **当前项目**：跨会话累计，但只保存在本地 `workspaceState`。
 
-### Conversations and progressive exploration
+新建会话会清除当前会话和单次请求统计，不会清除项目累计值。执行 **Code Cat: Reset Project Token Usage** 可以只重置项目统计。
 
-The first message gives the conversation its title. The starting question and all related
-follow-ups remain one conversation until **Code Cat: New Conversation** is selected. Click the
-conversation title beside **Code Cat /** to use the native VS Code picker:
+OpenAI、OpenAI 兼容服务、NewAPI、Anthropic 和 Gemini 的用量字段会被统一展示。服务未返回用量时，Code Cat 会明确标记为估算值；它用于比较上下文大小，不代表账单金额。
 
-- **New conversation** clears Code Cat-owned temporary breakpoints and starts an independent
-  question.
-- A historical conversation restores its messages, latest reading path, and how far that path
-  had been revealed.
-- Up to 20 recent non-empty conversations are stored in VS Code `workspaceState` for the current
-  workspace. No conversation file is written to the Python repository.
+对于同一个项目，Code Cat 会在 Python 文件没有变化时复用内存索引，并把稳定指令和稳定符号前缀放在提示词前部，以利用服务商的自动前缀缓存。
 
-For a code question, the initial answer addresses only that question and introduces one **Core
-code location** with its file, exact line, and the reason it is the best starting point. Select
-**Open code** to jump directly to that line. Open **Path map** or select **Continue to next
-location** only when that evidence is useful; Code Cat then reveals one additional location in
-the map, CodeLens, and source hover. A planned path is a reading hypothesis, not a runtime call
-stack. Use **Ask about this location** whenever you want to name the branch, function, or failure
-case you care about before revealing more.
+## 会话与渐进式代码探索
 
-### 4. First guided-debug session
+第一次提问会成为会话标题。相关追问会保留在同一个会话中，直到用户执行 **Code Cat: New Conversation**。
 
-1. Open the Code Cat activity-bar view.
-2. Type a normal message to chat with Code Cat, or ask a project question such as
-   `How does checkout validate inventory and charge the customer?`. Press **Enter** to send or
-   **Shift+Enter** to add a line break. Your messages use a subtle background so they stay
-   distinct from Code Cat's replies. Code Cat automatically chooses conversation or code-path
-   mode.
-3. For a code-path question, read the initial answer and its **Core code location**. Select
-   **Open code** to inspect the exact source line, or deepen the **Path map** one location at a
-   time.
-4. If you want to observe the process, select **Use a breakpoint to follow this**. Code Cat places
-   a temporary teaching breakpoint at the core location and starts guided debugging. The
-   **Path map**, **Call Stack**, and **Variables** surfaces then update from the debugging state;
-   stack frames and variables are populated only after a real pause. When possible, Code Cat
-   refines a function declaration to its first executable statement.
-5. Code Cat resolves what to run in this order:
-   - a Python/debugpy configuration already present in `.vscode/launch.json`;
-   - a console entry point declared under `[project.scripts]` in `pyproject.toml`;
-   - the currently open Python file as a final fallback.
-6. Choose an entry when Code Cat finds multiple launch configurations or project scripts.
-7. When debugpy pauses, return to the Code Cat activity-bar view to inspect the runtime trace,
-   call stack, and variables. VS Code may automatically switch to its Run and Debug view when
-   the session starts.
-8. Select **Explain current pause**, **Continue**, **Step Into**, or **Step Over**. If the process
-   exits without hitting the teaching breakpoint, Code Cat reports that no runtime evidence was
-   captured and offers **Run again**.
+点击 Code Cat 顶部的会话标题，可以：
 
-If the debug session was already running before Code Cat began observing it, stop it and start it again from Code Cat so the full runtime chain can be captured.
+- 新建会话，并清理 Code Cat 创建的临时断点。
+- 打开历史会话，恢复消息、最近的阅读路径和已展开进度。
+- 在当前工作区保留最多 20 个非空会话。
 
-For installed Python applications, prefer the `[project.scripts]` route. An implementation file
-such as `src/echo/cli/main.py` may only define `main()` and do nothing when executed directly,
-while a declaration such as `echo-cli = "echo.cli.main:main"` is the application's real entry
-point. Code Cat detects and invokes that callable under debugpy using the interpreter selected by
-**Python: Select Interpreter**. Add a `.vscode/launch.json` configuration when the application
-requires command-line arguments, special environment variables, a framework-specific launcher,
-or another custom startup sequence; that configuration always takes priority.
+会话保存在 VS Code `workspaceState`，不会在 Python 项目中创建聊天记录文件。
 
-Code Cat explicitly binds an automatically discovered project script to the interpreter selected
-for that workspace. This matters because its small console-script launcher is installed with the
-extension rather than stored inside the project; allowing debugpy to infer an interpreter from the
-launcher path can accidentally select a global Python instead of the project's environment. If
-the debugger still asks to change Python, run **Python: Select Interpreter**, choose the project
-environment, and start guided debug again.
+当用户提出代码问题时，初始回答只处理当前问题，并展示一个**核心代码位置**：
 
-### 5. Source-line teaching controls
+- 显示文件、精确行号和节点标题。
+- 解释为什么应该先看这里。
+- 点击 **打开代码** 可以跳转到源码行。
+- 点击 **查看路径图** 可以查看当前已经展开的阅读路径。
+- 点击 **继续下一处** 每次只增加一个代码位置。
+- 点击 **追问这个位置** 可以先缩小分支、函数或异常场景，再继续深入。
 
-Once a reading route exists, its Python source lines show a restrained `Code Cat · step/title`
-annotation. Hover the annotation or source line to see nearby code, the route context, and why
-the stop matters. After a structured pause explanation is available, the hover also includes
-**what happened**, **why it matters**, and **what to inspect next**.
+路径图是阅读假设，不等于运行时调用栈。只有真实断点命中后，调用栈和变量才成为可引用的运行证据。
 
-CodeLens actions above the exact source line provide progressively richer controls:
+## 第一次教学调试
 
-- Before a pause: **show context** and **pause here / remove teaching breakpoint**.
-- At the live pause: **explain here**, **continue**, **step into**, and **step over**.
-- If the line already has a user-created breakpoint, Code Cat labels it as preserved and never
-  removes or takes ownership of it.
+1. 打开 VS Code 活动栏中的 Code Cat。
+2. 输入普通对话，或提出代码问题，例如“结账流程如何校验库存并完成扣款？”。
+3. 按 **Enter** 发送，按 **Shift+Enter** 换行。
+4. 阅读回答及其**核心代码位置**，必要时点击 **打开代码**。
+5. 如果想观察执行过程，点击 **用断点跟一遍**。
 
-VS Code enables CodeLens by default. If the actions are hidden, enable **Editor: Code Lens** in
-Settings (`"editor.codeLens": true`). The inline annotation and hover remain available when
-CodeLens is disabled.
+Code Cat 会在核心位置放置临时教学断点，并按以下顺序选择运行入口：
 
-Code Cat teaching breakpoints are temporary. They are removed automatically when the guided
-debug session ends, when a new reading route replaces the old route, when the Code Cat view is
-closed outside an active debug session, when **Code Cat: New Conversation** starts a clean
-conversation, or when the extension is disposed. Only breakpoints created by Code Cat are
-removed; manual breakpoints are preserved. Normal follow-up chat inside the same conversation
-does not discard its teaching route.
+1. `.vscode/launch.json` 中已有的 Python/debugpy 配置。
+2. `pyproject.toml` 中 `[project.scripts]` 声明的控制台入口。
+3. 当前打开的 Python 文件。
 
-## Build and test from source
+存在多个启动配置或项目脚本时，Code Cat 会让用户选择。调试启动后，路径图会标记执行位置；断点命中后，调用栈和变量会同步更新。
+
+VS Code 启动调试时可能自动切换到 Run and Debug 视图。暂停后返回 Code Cat，即可检查路径、调用栈和变量，并执行：
+
+- **Explain current pause**
+- **Continue**
+- **Step Into**
+- **Step Over**
+
+如果程序退出但没有命中教学断点，Code Cat 会说明没有采集到运行时证据，并提供**重新运行**入口。
+
+如果调试会话在 Code Cat 开始观察前已经启动，请停止它并从 Code Cat 重新启动，以便采集完整的运行链路。
+
+对于使用 `[project.scripts]` 的已安装 Python 应用，Code Cat 会通过扩展内置的小型启动器调用真实入口函数，并显式使用当前工作区选择的 Python 解释器。
+
+如果程序需要命令行参数、特殊环境变量或框架启动器，请在 `.vscode/launch.json` 中增加配置；已有配置始终优先于自动发现。
+
+## 源码行教学控制
+
+阅读路径建立后，对应的 Python 源码行会显示克制的 `Code Cat · 步骤/标题` 注解。
+
+将鼠标悬停在注解或源码行上，可以查看附近代码、路径上下文和停在这里的原因。生成结构化暂停解释后，还会显示发生了什么、为什么重要以及下一步应该检查什么。
+
+精确源码行上方的 CodeLens 会按阶段提供：
+
+- 暂停前：查看上下文、在这里暂停或移除教学断点。
+- 真实暂停时：解释当前位置、继续、单步进入和单步跳过。
+- 已有用户断点时：显示为保留状态，Code Cat 不会删除或接管它。
+
+如果 CodeLens 未显示，请在设置中启用 **Editor: Code Lens**，即 `"editor.codeLens": true`。
+
+Code Cat 教学断点是临时的，会在以下情况自动移除：
+
+- 教学调试结束。
+- 新路径替换旧路径。
+- 非调试状态下关闭 Code Cat 视图。
+- 执行 **Code Cat: New Conversation**。
+- 扩展被停用。
+
+只有 Code Cat 创建的断点会被移除。用户手动创建的断点会被保留，同一会话中的普通追问也不会清除教学路径。
+
+## 从源码构建与测试
 
 ```bash
 npm install
@@ -252,51 +216,28 @@ npm run check
 npm run package
 ```
 
-### Optional design-review workflow
+`npm run package` 会在仓库根目录生成带版本号的 `code-cat-*.vsix`。
 
-Runtime Map interaction polish follows Emil Kowalski's design-engineering principles: frequent
-keyboard actions stay immediate, pointer feedback stays under 160 ms, transitions name their
-exact properties, and motion respects reduced-motion preferences. Contributors who want the same
-review skill can install it with:
+在 VS Code 中打开本仓库并按 `F5`，扩展开发窗口会自动打开 `examples/python-order-service` 示例工作区。
 
-```bash
-npx skills@latest add emilkowalski/skills
-```
+源码修改不会自动更新已经安装的 VSIX。需要在普通 VS Code 窗口验证修改时：
 
-This skill is a contributor tool, not a Code Cat runtime dependency. Restart the coding agent or
-open a new task after installation so the newly installed skill is discovered.
-
-Open this repository in VS Code and press `F5`. The extension-development window opens the bundled `examples/python-order-service` workspace. `npm run package` creates a versioned `code-cat-*.vsix` file in the repository root.
-
-### Refresh an installed VSIX after source changes
-
-Editing or compiling the repository does not update a Code Cat extension that was previously
-installed from VSIX. After every source change that you want to verify in the normal VS Code
-window:
-
-1. Run `npm run package` to rebuild the versioned VSIX.
-2. Reinstall that newly generated file with **Install from VSIX...**, or run:
+1. 执行 `npm run package`。
+2. 使用 **Install from VSIX...** 重新安装生成的文件，或执行：
 
    ```bash
    code --install-extension "/absolute/path/to/code-cat-X.Y.Z.vsix" --force
    ```
 
-3. Run **Developer: Reload Window** in the same VS Code profile that has `local.code-cat`
-   installed.
+3. 执行 **Developer: Reload Window**。
 
-The `--force` flag is required when reinstalling a rebuilt package with the same version number.
-If you are using the `F5` extension-development window instead, stop that debug session and start
-it again; the already-running extension host does not hot-reload compiled Webview code.
-
-The real VS Code smoke test is optional and requires the VS Code application plus the Microsoft Python extensions:
+真实 VS Code 冒烟测试需要本机安装 VS Code 和 Microsoft Python 扩展：
 
 ```bash
 npm run smoke:vscode
 ```
 
-The runner automatically uses the default macOS Stable application and discovers Python dependencies from `~/.vscode/extensions`. It links only the explicit Microsoft Python dependencies into `.vscode-test/code-cat-extensions` before launching VS Code. For VS Code Insiders, a custom installation, Windows, Linux, or a non-default extension source directory, provide the relevant absolute paths.
-
-macOS or Linux:
+默认测试脚本使用 macOS Stable 版 VS Code，并从 `~/.vscode/extensions` 查找 Python 依赖。自定义安装路径时可以设置：
 
 ```bash
 CODE_CAT_VSCODE_EXECUTABLE="/absolute/path/to/vscode-executable" \
@@ -304,7 +245,7 @@ CODE_CAT_VSCODE_EXTENSIONS_SOURCE_DIR="/absolute/path/to/installed/vscode/extens
 npm run smoke:vscode
 ```
 
-Windows PowerShell:
+Windows PowerShell：
 
 ```powershell
 $env:CODE_CAT_VSCODE_EXECUTABLE = "C:\absolute\path\to\Code.exe"
@@ -312,72 +253,58 @@ $env:CODE_CAT_VSCODE_EXTENSIONS_SOURCE_DIR = "$env:USERPROFILE\.vscode\extension
 npm run smoke:vscode
 ```
 
-Set `CODE_CAT_VSCODE_EXTENSIONS_DIR` only when the isolated target itself must move. Point it to a dedicated test directory, never to the normal user extensions directory; the runner populates it with only the allowed Python dependencies.
+测试覆盖扩展激活、模型服务适配、Token 用量、断点创建与恢复、debugpy 启动、真实暂停、调用栈与变量采集、路径图渲染、调试控制和 `[project.scripts]` 入口。
 
-`npm run smoke:vscode` launches isolated Extension Hosts using the installed VS Code application
-and explicit Microsoft Python extension dependencies. It verifies activation, model-provider
-command registration, provider-specific usage normalization and fallback estimation, local usage
-ledger behavior, linked breakpoint creation and restoration, debugpy startup, real pauses,
-captured stack frames and variables, native call-stack data, progressive Runtime Map rendering,
-status-bar token usage,
-Step Over, and a `[project.scripts]` entry module that defines—but does not directly call—its
-`main()` function.
+## 代码理解输出约束
 
-The route is a hypothesis; the runtime trace is evidence. Code Cat deliberately displays both.
+Code Cat 把可读性作为产品约束，而不是完全依赖模型自由发挥：
 
-### Code-understanding output contract
+- 规划路径只允许引用已经校验的项目文件，并限制为 1–8 个节点。
+- 初始回答只解决当前问题，不枚举完整路径。
+- 暂停解释必须包含“发生了什么、为什么重要、下一步看哪里”三个字段。
+- 格式错误的模型输出不会作为原始文本直接渲染。
+- 调试变量在采集时统一去重、折叠换行、限制长度并遮盖敏感字段。
+- 调用栈遵循“顶层源码位置 → 结构化解释 → 真实栈帧 → 下一步调试操作”的阅读顺序。
+- 对话 Markdown 只渲染安全的 DOM 子集，模型文本不会作为可执行 HTML 插入。
 
-Code Cat treats readability as a product invariant rather than leaving presentation to each
-model response:
+## 可选的设计审查工作流
 
-- A planned route is limited to validated files and 1–8 bounded nodes; titles, summaries, and
-  reasons are length-limited before entering session state. Its summary answers the current
-  question without enumerating the complete route, and only the revealed prefix reaches the UI.
-- A pause explanation must decode into exactly three fields: **what happened**, **why it
-  matters**, and **what to inspect next**. Missing or malformed fields are never rendered as raw
-  model output; the paused source, fallback explanation, stack, variables, and debug actions stay
-  visible with an inline retry message.
-- Debug variables are normalized once at capture time: debugger grouping rows are removed,
-  duplicate names are collapsed, credential-like names are redacted, line breaks are folded,
-  and displayed values are bounded.
-- The **Call Stack** tab follows the reading order **top-frame source location → structured
-  explanation → real frames → next debug action**. Variables stay in their own tab so runtime
-  evidence never replaces the conversation.
-- Conversational Markdown is rendered into a small safe subset of DOM elements; model text is
-  never inserted as executable HTML.
+Runtime Map 的交互遵循 Emil Kowalski 的设计工程原则：高频操作应立即响应，指针反馈控制在 160 毫秒以内，过渡动画明确声明属性，并尊重 reduced-motion 设置。
 
-## IDE support and repository layout
+希望使用同一设计审查 Skill 的贡献者可以执行：
 
-The working prototype currently supports **VS Code only**. PyCharm support should stay in
-this repository rather than starting a separate product repository: the project index,
-route/session domain model, AI prompts, redaction rules, and IDE-neutral message contracts can
-be shared, while each IDE keeps its own adapter and UI package.
-
-A future cross-IDE layout can evolve toward:
-
-```text
-packages/core/             shared Python indexing, routes, sessions, and tutor contracts
-packages/vscode-extension/ current VS Code/debugpy adapter and Webview UI
-packages/jetbrains-plugin/ future PyCharm debugger adapter and JetBrains UI
+```bash
+npx skills@latest add emilkowalski/skills
 ```
 
-Do not create the PyCharm package until the shared contracts have stabilized in the VS Code
-vertical slice. JetBrains plugins use a different SDK, build system, debugger APIs, and UI
-toolkit, so sharing the whole extension implementation would create more coupling than reuse.
-If publishing, release automation, or contributor ownership later diverges substantially, the
-JetBrains package can then be split into its own repository without changing the shared
-protocol boundary.
+该 Skill 仅用于贡献者的开发流程，不是 Code Cat 的运行时依赖。安装后请重新启动编码代理或开启新任务。
 
-## Architecture notes
+## IDE 支持与仓库结构
 
-- MVP architecture: `docs/architecture/mvp.md`
-- Reusable building blocks research: `docs/research/reusable-building-blocks.md`
+当前原型只支持 **VS Code**。未来的 PyCharm 支持应优先保留在同一个仓库中，共享项目索引、路径与会话领域模型、AI 提示词、脱敏规则和 IDE 中立协议。
 
-## Known prototype limits
+未来可以逐步演进为：
 
-- The structural index uses Python declaration scanning, not a complete Python parser.
-- Route planning currently makes one model pass; a production version should use symbol/call-hierarchy retrieval followed by a smaller evidence-grounded model pass.
-- Variable capture is limited to the top frame and bounded by settings.
-- No dedicated unit-test runner, CI, marketplace publishing metadata, telemetry, or multi-root
-  route disambiguation yet. Conversation history is workspace-local rather than cloud-synced.
-- The webview currently renders a focused execution map rather than an unrestricted mind-map editor.
+```text
+packages/core/             共享 Python 索引、路径、会话和 Tutor 协议
+packages/vscode-extension/ 当前 VS Code/debugpy 适配器和 Webview UI
+packages/jetbrains-plugin/ 未来 PyCharm 调试器适配器和 JetBrains UI
+```
+
+在 VS Code 垂直链路稳定前，不应提前创建 PyCharm 包。JetBrains 插件使用不同的 SDK、构建系统、调试接口和 UI 工具，过早共享实现会增加耦合。
+
+## 架构资料
+
+- `docs/architecture/mvp.md`
+- `docs/research/reusable-building-blocks.md`
+
+## 当前限制
+
+- 结构索引基于 Python 声明扫描，不是完整 Python 解析器。
+- 路径规划目前只执行一次模型请求，后续可以增加符号和调用层级检索。
+- 变量采集只覆盖顶层栈帧，并受设置中的数量和长度限制。
+- 暂无独立单元测试运行器、CI、Marketplace 发布元数据、遥测和多根工作区路径消歧。
+- 会话历史只保存在本地工作区，不进行云同步。
+- 当前 Webview 是聚焦的执行路径图，不是自由编辑的思维导图工具。
+
+路径是推测，运行轨迹才是证据。
