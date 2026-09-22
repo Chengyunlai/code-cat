@@ -15,7 +15,7 @@ import {
   PythonProjectScript,
   selectedPythonInterpreterPath,
 } from "./debug/pythonLaunchTargets";
-import { type ChatMessage, RoutePlan, SourceLocation } from "./domain/model";
+import { type ChatMessage, DebugPause, RoutePlan, SourceLocation } from "./domain/model";
 import { PythonProjectIndex } from "./project/pythonProjectIndex";
 import { CallStackTree } from "./views/callStackTree";
 import { RuntimeMapActions, RuntimeMapView } from "./views/runtimeMapView";
@@ -58,21 +58,26 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
 
+  let activeQuestion: vscode.CancellationTokenSource | undefined;
+  context.subscriptions.push({ dispose: () => { activeQuestion?.cancel(); activeQuestion?.dispose(); } });
   const actions: RuntimeMapActions = {
     askQuestion: async (question) => {
+      const pause = store.selectedPause();
       const priorMessages = store.beginQuestion(question);
       if (!priorMessages) {
         return;
       }
-      await answerQuestion(
-        store,
-        tutor,
-        breakpoints,
-        question,
-        priorMessages,
-      );
+      const cancellation = new vscode.CancellationTokenSource();
+      activeQuestion = cancellation;
+      try {
+        await answerQuestion(store, tutor, breakpoints, question, priorMessages, cancellation.token, pause);
+      } finally {
+        if (activeQuestion === cancellation) activeQuestion = undefined;
+        cancellation.dispose();
+      }
       void vscode.commands.executeCommand("workbench.view.extension.codeCat");
     },
+    cancelQuestion: () => activeQuestion?.cancel(),
     startGuidedDebug: (question) =>
       actionCoordinator.run("debug", () =>
         startGuidedDebug(
@@ -84,8 +89,13 @@ export function activate(context: vscode.ExtensionContext): void {
           question,
         ),
       ),
-    explainPause: (question) =>
-      actionCoordinator.run("pause", () => explainCurrentPause(store, tutor, question)),
+    explainPause: async (question) => {
+      if (!store.selectedPause()) {
+        void vscode.window.showInformationMessage("先启动 Python 调试并命中断点，再解释暂停现场。");
+        return;
+      }
+      await actions.askQuestion(question?.trim() || "解释这次暂停：我已经知道什么、还不能确定什么、下一步怎样验证？");
+    },
     revealLocation: async (location, frameId) => {
       if (frameId !== undefined) {
         store.selectFrame(frameId);
@@ -123,8 +133,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerHoverProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
     vscode.window.registerTreeDataProvider("codeCat.callStack", callStackTree),
     vscode.window.registerWebviewViewProvider("codeCat.runtimeMap", runtimeMap),
-    vscode.commands.registerCommand("codeCat.askProject", async () => {
-      const question = await vscode.window.showInputBox({
+    vscode.commands.registerCommand("codeCat.askProject", async (suppliedQuestion?: unknown) => {
+      const question = typeof suppliedQuestion === "string" ? suppliedQuestion : await vscode.window.showInputBox({
         title: "Locate a Python code path",
         prompt: "What behavior or request flow do you want to understand?",
         placeHolder: "How does an order move from the API to payment?",
@@ -134,6 +144,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await actions.askQuestion(question.trim());
       }
     }),
+    vscode.commands.registerCommand("codeCat.cancelQuestion", () => actions.cancelQuestion()),
     vscode.commands.registerCommand(
       "codeCat.startGuidedDebug",
       async (suppliedQuestion?: unknown) => {
@@ -233,6 +244,9 @@ export function activate(context: vscode.ExtensionContext): void {
         debugStatus: store.snapshot().debugStatus,
         pauseCount: store.snapshot().pauses.length,
         chatMessageCount: store.snapshot().chatMessages.length,
+        chatMessages: store.snapshot().chatMessages,
+        requestKind: store.snapshot().requestKind,
+        retryQuestion: store.snapshot().retryQuestion,
         conversationId: store.snapshot().conversationId,
         conversationTitle: store.snapshot().conversationTitle,
         conversationHistoryCount: store.conversationSummaries().length,
@@ -241,6 +255,7 @@ export function activate(context: vscode.ExtensionContext): void {
         lastPauseTopFramePath: store.selectedPause()?.frames[0]?.location?.path,
         lastPauseTopFrameLine: store.selectedPause()?.frames[0]?.location?.line,
         lastPauseVariableCount: store.selectedPause()?.variables.length ?? 0,
+        lastPauseSource: store.selectedPause()?.source,
         callStackFrameCount: callStackTree.getChildren().length,
         tokenUsageStatus: tokenUsageStatus.diagnostics(),
         runtimeMap: runtimeMap.smokeDiagnostics(),
@@ -476,14 +491,20 @@ async function answerQuestion(
   breakpoints: ManagedBreakpointService,
   question: string,
   priorMessages: readonly ChatMessage[],
+  token: vscode.CancellationToken,
+  pause?: DebugPause,
 ): Promise<void> {
-  const cancellation = new vscode.CancellationTokenSource();
   try {
-    const result = await tutor.answerQuestion(
+    if (pause) {
+      const answer = await cancellable(tutor.answerPauseQuestion(question, priorMessages, pause, token), token);
+      store.completeQuestionWithAnswer(answer, pause);
+      return;
+    }
+    const result = await cancellable(tutor.answerQuestion(
       question,
       priorMessages,
-      cancellation.token,
-    );
+      token,
+    ), token);
     if (result.kind === "chat") {
       store.completeQuestionWithAnswer(result.answer);
     } else {
@@ -492,8 +513,18 @@ async function answerQuestion(
     }
   } catch (error) {
     handleQuestionTutorError(store, error);
+  }
+}
+
+async function cancellable<T>(work: Promise<T>, token: vscode.CancellationToken): Promise<T> {
+  let listener: vscode.Disposable | undefined;
+  try {
+    return await Promise.race([work, new Promise<never>((_resolve, reject) => {
+      listener = token.onCancellationRequested(() => reject(new vscode.CancellationError()));
+      if (token.isCancellationRequested) reject(new vscode.CancellationError());
+    })]);
   } finally {
-    cancellation.dispose();
+    listener?.dispose();
   }
 }
 
@@ -517,37 +548,6 @@ async function locateRoute(
     await vscode.commands.executeCommand("workbench.view.extension.codeCat");
   } catch (error) {
     handleTutorError(store, error);
-  }
-}
-
-async function explainCurrentPause(
-  store: SessionStore,
-  tutor: AiTutor,
-  suppliedQuestion?: string,
-): Promise<void> {
-  const state = store.snapshot();
-  const pause = store.selectedPause();
-  if (!pause) {
-    void vscode.window.showInformationMessage(
-      "Start a Python debug session and pause at a breakpoint before asking for an explanation.",
-    );
-    return;
-  }
-
-  store.setBusy("正在根据真实调用栈和变量解释当前暂停…");
-  try {
-    const message = await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Window,
-        title: "Code Cat is explaining the current pause",
-        cancellable: true,
-      },
-      async (_progress, token) =>
-        tutor.explainPause(suppliedQuestion?.trim() || state.route?.question, pause, token),
-    );
-    store.setTutorMessage(message);
-  } catch (error) {
-    handlePauseTutorError(store, pause.id, error);
   }
 }
 
@@ -761,6 +761,7 @@ async function runDebugCommand(
   if (
     state.debugSessionId !== session.id ||
     state.debugStatus !== "paused" ||
+    state.captureError ||
     !livePause ||
     selectedPause?.id !== livePause.id
   ) {
@@ -799,31 +800,14 @@ function handleTutorError(store: SessionStore, error: unknown): void {
 }
 
 function handleQuestionTutorError(store: SessionStore, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
+  const cancelled = error instanceof vscode.CancellationError;
+  const message = cancelled ? "已停止回答。现场与草稿已保留，你可以修改问题后重试。"
+    : error instanceof Error ? error.message : String(error);
   store.completeQuestionWithTutorMessage({
     id: randomUUID(),
-    kind: error instanceof TutorGuidanceError ? "system" : "error",
+    kind: cancelled || error instanceof TutorGuidanceError ? "system" : "error",
     text: message,
   });
-}
-
-function handlePauseTutorError(
-  store: SessionStore,
-  pauseId: string,
-  error: unknown,
-): void {
-  if (error instanceof vscode.CancellationError) {
-    store.setBusy(undefined);
-    return;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  store.setTutorMessage({
-    id: randomUUID(),
-    kind: "pause-error",
-    pauseId,
-    text: message,
-  });
-  void vscode.commands.executeCommand("workbench.view.extension.codeCat");
 }
 
 async function runModelProviderCommand(action: () => Promise<void>): Promise<void> {

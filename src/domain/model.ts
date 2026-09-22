@@ -25,6 +25,8 @@ export interface DebugPause {
   readonly recordedAt: string;
   readonly frames: readonly StackFrameSnapshot[];
   readonly variables: readonly VariableSnapshot[];
+  readonly source?: string;
+  readonly captureNote?: string;
 }
 
 export interface RouteNode {
@@ -76,6 +78,9 @@ export interface ChatMessage {
   readonly id: string;
   readonly role: "user" | "assistant";
   readonly text: string;
+  readonly pauseId?: string;
+  readonly evidenceLabel?: string;
+  readonly observation?: boolean;
 }
 
 export interface ConversationRecord {
@@ -109,6 +114,8 @@ export interface SessionState {
   readonly tutorMessage?: TutorMessage;
   readonly contentMode?: "chat" | "debug";
   readonly busyMessage?: string;
+  readonly retryQuestion?: string;
+  readonly captureError?: string;
   readonly requestKind?: "question" | "pause" | "debug" | "control" | "model";
 }
 

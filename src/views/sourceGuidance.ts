@@ -138,7 +138,7 @@ export class SourceGuidanceController
       0,
       state.route?.nodes.findIndex((candidate) => candidate.id === node.id) ?? 0,
     );
-    const livePause = state.debugStatus === "paused" ? state.pauses.at(-1) : undefined;
+    const livePause = state.debugStatus === "paused" && !state.captureError ? state.pauses.at(-1) : undefined;
     const live = sameLocation(livePause?.frames[0]?.location, node.location);
     const lineIndex = Math.min(
       document.lineCount - 1,

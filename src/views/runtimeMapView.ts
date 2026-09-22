@@ -9,6 +9,7 @@ import { createRuntimeMapHtml } from "./runtimeMapHtml";
 
 export interface RuntimeMapActions {
   askQuestion(question: string): Promise<void>;
+  cancelQuestion(): void;
   startGuidedDebug(question?: string): Promise<void>;
   explainPause(question?: string): Promise<void>;
   revealLocation(location: SourceLocation, frameId?: number): Promise<void>;
@@ -340,6 +341,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         }
       : undefined;
     const pauses = state.pauses.map((pause) => ({
+      ...pause,
       id: pause.id,
       reason: pause.reason,
       recordedAt: pause.recordedAt,
@@ -348,6 +350,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       label: pause.frames[0]
         ? `${displayFrameName(pause.frames[0].name)} · ${frameLocationLabel(pause.frames[0])}`
         : pause.reason,
+      frames: pause.frames.map((frame) => ({ ...frame, fileLabel: frameLocationLabel(frame) })),
       selected: pause.id === currentPause?.id,
     }));
     const frames = (currentPause?.frames ?? []).map((frame, index) => ({
@@ -371,9 +374,11 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         variables: currentPause?.variables ?? [],
         tutorMessage: state.tutorMessage,
         busyMessage: state.busyMessage,
+        retryQuestion: state.retryQuestion,
+        captureError: state.captureError,
         debugStatus: state.debugStatus ?? (state.debugSessionId ? "running" : "idle"),
         livePauseId:
-          state.debugStatus === "paused" ? state.pauses.at(-1)?.id : undefined,
+          state.debugStatus === "paused" && !state.captureError ? state.pauses.at(-1)?.id : undefined,
         requestPending: Boolean(state.requestKind || state.busyMessage),
         requestKind: state.requestKind,
         modelProvider: this.actions.modelProviderStatus(),
@@ -424,6 +429,9 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           await this.actions.askQuestion(value.question.trim());
           this.postState();
         }
+        return;
+      case "cancelQuestion":
+        this.actions.cancelQuestion();
         return;
       case "startDebug":
         await this.actions.startGuidedDebug(
@@ -507,6 +515,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     const state = this.store.snapshot();
     return (
       state.debugStatus === "paused" &&
+      !state.captureError &&
       this.store.selectedPause()?.id === state.pauses.at(-1)?.id
     );
   }

@@ -109,6 +109,9 @@ export class DebugSessionObserver implements vscode.Disposable {
     void this.capturePause(session, message.body, version).catch((error: unknown) => {
       const details = error instanceof Error ? error.message : String(error);
       console.warn(`Code Cat could not capture the debug pause: ${details}`);
+      if (this.captureVersions.get(session.id) === version) {
+        this.store.reportCaptureError(session.id);
+      }
     });
   }
 
@@ -119,6 +122,7 @@ export class DebugSessionObserver implements vscode.Disposable {
   ): Promise<void> {
     const threadId = await resolveThreadId(session, body.threadId);
     if (threadId === undefined) {
+      this.store.reportCaptureError(session.id);
       return;
     }
 
@@ -134,6 +138,7 @@ export class DebugSessionObserver implements vscode.Disposable {
     const variables = frames[0]
       ? await captureTopFrameVariables(session, frames[0].id)
       : [];
+    const source = await captureSource(frames[0]);
 
     if (this.captureVersions.get(session.id) !== version) {
       return;
@@ -148,8 +153,28 @@ export class DebugSessionObserver implements vscode.Disposable {
       recordedAt: new Date().toISOString(),
       frames,
       variables,
+      source,
+      captureNote: source ? undefined : "未能读取暂停处的工作区源码；只能依据调用栈与已采集变量分析。",
     };
     this.store.recordPause(pause);
+  }
+}
+
+async function captureSource(frame: StackFrameSnapshot | undefined): Promise<string | undefined> {
+  const location = frame?.location;
+  if (!location || !vscode.workspace.getWorkspaceFolder(vscode.Uri.file(location.path))) {
+    return undefined;
+  }
+  try {
+    const document = await vscode.workspace.openTextDocument(location.path);
+    const start = Math.max(0, location.line - 7);
+    const end = Math.min(document.lineCount, location.line + 6);
+    return Array.from({ length: Math.max(0, end - start) }, (_, offset) => {
+      const index = start + offset;
+      return `${index + 1 === location.line ? ">" : " "} ${index + 1}: ${document.lineAt(index).text.slice(0, 400)}`;
+    }).join("\n");
+  } catch {
+    return undefined;
   }
 }
 

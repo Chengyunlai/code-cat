@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const http = require("node:http");
 const vscode = require("vscode");
 const { AiTutor } = require("../../dist/ai/aiTutor");
+const { ModelProviderService } = require("../../dist/ai/modelProviderService");
 const { requestHttpModel } = require("../../dist/ai/modelClients");
 const { TokenUsageTracker } = require("../../dist/ai/tokenUsageTracker");
 const {
@@ -58,6 +59,7 @@ async function run() {
   testRuntimeEvidenceConstraints();
   await testConversationState();
   testQuestionTerminalStates();
+  testObservationOwnership();
   await testProviderSpecificSettings();
   testModelProviderSecurity();
   await vscode.commands.executeCommand("codeCat.clearSession");
@@ -265,6 +267,7 @@ async function run() {
   );
   assert.equal(preservedPauseState.runtimeMap.renderedPauseExplanationSectionCount, 3);
   assert.equal(preservedPauseState.runtimeMap.renderedRuntimeEvidenceGroupCount, 0);
+  await testPauseConversationCommands();
   await vscode.commands.executeCommand("codeCat.clearSession");
 
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -503,6 +506,7 @@ async function run() {
       "Code Cat to publish its first debug snapshot",
     );
     assert.ok(firstCodeCatState.lastPauseFrameCount > 0, "Code Cat should capture DAP frames");
+    assert.match(firstCodeCatState.lastPauseSource, /reserve_inventory/u, "real pause must capture nearby source");
     const pausedCodeLenses = await vscode.commands.executeCommand(
       "vscode.executeCodeLensProvider",
       checkoutUri,
@@ -848,7 +852,7 @@ async function testConversationState() {
     assert.equal(store.conversationSummaries()[0].id, firstConversationId);
     assert.equal(store.switchConversation(firstConversationId), true);
     assert.equal(store.snapshot().conversationId, firstConversationId);
-    assert.equal(store.snapshot().chatMessages.length, 8);
+    assert.equal(store.snapshot().chatMessages.length, 10);
     assert.equal(store.snapshot().route.question, "支付失败会经过哪些函数？");
     assert.equal(store.snapshot().revealedRouteNodeCount, 1);
 
@@ -857,13 +861,87 @@ async function testConversationState() {
     try {
       assert.equal(restored.snapshot().conversationId, firstConversationId);
       assert.equal(restored.snapshot().conversationTitle, "你好");
-      assert.equal(restored.snapshot().chatMessages.length, 8);
+      assert.equal(restored.snapshot().chatMessages.length, 10);
       assert.equal(restored.conversationSummaries().length, 1);
     } finally {
       restored.dispose();
     }
   } finally {
     store.dispose();
+  }
+}
+
+function testObservationOwnership() {
+  const store = new SessionStore();
+  const first = {
+    id: 'first', sessionId: 'debug', reason: 'breakpoint', threadId: 1,
+    recordedAt: new Date().toISOString(), frames: [], variables: [], source: '> 1: check_stock()',
+  };
+  try {
+    store.beginDebugSession('debug');
+    store.recordPause(first);
+    store.beginQuestion('这行做了什么？');
+    store.recordPause({ ...first, id: 'second', source: '> 2: charge_payment()' });
+    store.completeQuestionWithAnswer('这是第一次观察的回答。', first);
+    assert.equal(store.selectedPause().id, 'second', 'late answer does not change selected live evidence');
+    assert.equal(store.snapshot().chatMessages.at(-1).pauseId, 'first', 'late answer keeps original provenance');
+    store.selectPause('first');
+    store.setTutorMessage({ id: 'old-answer', kind: 'pause', pauseId: 'second', explanation: {
+      whatHappened: '第二次观察', whyItMatters: '依据第二次快照', inspectNext: '下一步',
+    } });
+    assert.equal(store.selectedPause().id, 'first');
+    assert.equal(store.snapshot().chatMessages.at(-1).pauseId, 'second', 'legacy explanation remains in history even after selection changes');
+    store.selectPause('missing');
+    assert.equal(store.selectedPause().id, 'first', 'unknown observation cannot change selection');
+    store.reportCaptureError('debug');
+    assert.ok(store.snapshot().captureError);
+    store.markDebugSessionRunning('debug');
+    assert.equal(store.snapshot().captureError, undefined);
+    assert.equal(store.selectedPause().source, '> 1: check_stock()', 'historical source is preserved');
+  } finally { store.dispose(); }
+}
+
+async function testPauseConversationCommands() {
+  const original = ModelProviderService.prototype.request;
+  const prompts = [];
+  let finishCancelled;
+  try {
+    ModelProviderService.prototype.request = async function(prompt) {
+      prompts.push(prompt);
+      return JSON.stringify({ message: "已观察到 MAX_TURNS 为 20；没有证据表明循环已经执行。" });
+    };
+    await vscode.commands.executeCommand("codeCat.askProject", "这个值为什么是 20？");
+    let state = await vscode.commands.executeCommand("codeCat.__smokeState");
+    assert.equal(state.chatMessages.at(-1).pauseId, "structured-pause");
+    assert.match(prompts[0], /MAX_TURNS: int = 20/u);
+    assert.match(prompts[0], /BEFORE/u);
+    await vscode.commands.executeCommand("codeCat.askProject", "那它现在已经执行了吗？");
+    assert.match(prompts[1], /已观察到 MAX_TURNS 为 20/u, "follow-up includes prior evidence answer");
+    ModelProviderService.prototype.request = async function() {
+      return new Promise((resolve) => { finishCancelled = resolve; });
+    };
+    const pending = vscode.commands.executeCommand("codeCat.askProject", "这个请求需要停止");
+    await waitForValue(() => Boolean(finishCancelled), Boolean, "the pending model request");
+    await vscode.commands.executeCommand("codeCat.cancelQuestion");
+    await pending;
+    state = await vscode.commands.executeCommand("codeCat.__smokeState");
+    assert.equal(state.requestKind, undefined);
+    assert.equal(state.retryQuestion, "这个请求需要停止");
+    assert.equal(state.pauseCount, 1, "cancelling preserves evidence");
+    ModelProviderService.prototype.request = async function() { return '{"message":"后续请求正常完成"}'; };
+    await vscode.commands.executeCommand("codeCat.askProject", "重新问一个问题");
+    finishCancelled('{"message":"不应出现的迟到回答"}');
+    await new Promise((resolve) => setImmediate(resolve));
+    state = await vscode.commands.executeCommand("codeCat.__smokeState");
+    assert.equal(state.chatMessages.at(-1).text, "后续请求正常完成");
+    assert.equal(state.chatMessages.some((item) => item.text === "不应出现的迟到回答"), false);
+    ModelProviderService.prototype.request = async function() { throw new Error("模拟服务失败"); };
+    await vscode.commands.executeCommand("codeCat.askProject", "失败后保留这个问题");
+    state = await vscode.commands.executeCommand("codeCat.__smokeState");
+    assert.equal(state.retryQuestion, "失败后保留这个问题");
+    assert.equal(state.requestKind, undefined);
+  } finally {
+    ModelProviderService.prototype.request = original;
   }
 }
 

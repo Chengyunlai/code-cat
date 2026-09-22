@@ -10,16 +10,75 @@ export const runtimeMapStyles = String.raw`
       --cc-ink: var(--vscode-foreground, #202124);
       --cc-muted: var(--vscode-descriptionForeground, #616168);
       --cc-focus: var(--vscode-focusBorder, #2774d8);
+      --cc-accent: var(--vscode-codeCat-accent, #315bd6);
+      --cc-accent-hover: var(--vscode-codeCat-accentHover, #2548b0);
+      --cc-on-accent: var(--vscode-codeCat-onAccent, #ffffff);
+      --cc-observed: var(--vscode-codeCat-observed, #18745c);
+      --cc-inference: var(--vscode-codeCat-inference, #6854bd);
+      --cc-unknown: var(--vscode-codeCat-uncertainty, #8c5a12);
+      --cc-accent-wash: color-mix(in srgb, var(--cc-accent) 8%, var(--cc-bg));
       --cc-success: var(--vscode-testing-iconPassed, #168443);
       --cc-danger: var(--vscode-errorForeground, #c83232);
-      --cc-strong: var(--vscode-foreground, #202124);
-      --cc-on-strong: var(--vscode-editor-background, #ffffff);
+      --cc-strong: var(--cc-accent);
+      --cc-on-strong: var(--cc-on-accent);
       --cc-radius: 8px;
       --cc-ease-out: cubic-bezier(.23, 1, .32, 1);
       --cc-ease-in-out: cubic-bezier(.77, 0, .175, 1);
     }
     * { box-sizing: border-box; }
-    html, body { min-height: 100%; }
+    [hidden] { display: none !important; }
+    .composer-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .composer-toolbar .action { min-height: 30px; padding: 5px 10px; font-size: 12px; }
+    .tools-menu { position: relative; margin-left: auto; }
+    .tools-menu > summary { padding: 7px 9px; color: var(--cc-accent); font-size: 12px; cursor: pointer; border-radius: 4px; list-style: none; }
+    .tools-menu > summary::-webkit-details-marker { display: none; }
+    .tools-menu > summary:hover, .tools-menu[open] > summary { background: var(--cc-accent-wash); color: var(--cc-accent); }
+    .tools-panel { position: absolute; bottom: calc(100% + 8px); right: 0; width: min(340px, calc(100vw - 28px)); max-height: min(60vh, 420px); overflow: auto; padding: 14px; background: var(--cc-bg); border: 1px solid var(--cc-border); border-radius: 8px; }
+    .tools-panel .model-provider { width: 100%; max-width: none; padding: 8px 0; justify-content: space-between; }
+    .tools-panel .model-provider-label { display: block; }
+    .tools-panel .header-actions { margin-top: 8px; border-top: 1px solid var(--cc-border); }
+    .tools-menu .tabs { margin-top: 0; }
+    .observation { margin: 22px 0; padding: 14px; border: 1px solid color-mix(in srgb, var(--cc-accent) 22%, var(--cc-border)); border-radius: 10px; background: color-mix(in srgb, var(--cc-accent) 3%, var(--cc-bg)); }
+    .observation-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .observation-header strong { font-size: 13px; overflow-wrap: anywhere; }
+    .observation-status { font-size: 11px; color: var(--cc-muted); }
+    .observation-status.live { padding: 3px 7px; color: var(--cc-observed); background: color-mix(in srgb, var(--cc-observed) 10%, var(--cc-bg)); border-radius: 4px; }
+    .observation-status.exception { color: var(--cc-danger); background: color-mix(in srgb, var(--cc-danger) 10%, var(--cc-bg)); }
+    .observation-location { padding: 3px 0; color: var(--cc-accent); background: transparent; border: 0; font-weight: 600; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--cc-accent) 35%, transparent); text-underline-offset: 4px; overflow-wrap: anywhere; }
+    .observation-location:hover { text-decoration-color: currentColor; }
+    .observation-hint { color: var(--cc-muted); margin: 10px 0; line-height: 1.65; }
+    .observation-evidence > summary { cursor: pointer; padding: 9px 6px; margin: 0 -6px; border-radius: 4px; font-size: 12px; color: var(--cc-accent); }
+    .observation-evidence > summary:hover { background: var(--cc-accent-wash); }
+    .observation-source { background: var(--cc-surface); padding: 12px; border-radius: 6px; overflow-x: auto; font: 12px/1.7 var(--vscode-editor-font-family, monospace); }
+    .syntax-keyword { color: var(--cc-inference); font-weight: 600; }
+    .syntax-string { color: var(--cc-observed); }
+    .syntax-number { color: var(--cc-unknown); }
+    .syntax-comment { color: var(--cc-muted); }
+    .evidence-label { padding: 2px 5px; border-radius: 4px; font-size: 12px; }
+    .evidence-label.observed { color: var(--cc-observed); background: color-mix(in srgb, var(--cc-observed) 9%, var(--cc-bg)); }
+    .evidence-label.inference { color: var(--cc-inference); background: color-mix(in srgb, var(--cc-inference) 9%, var(--cc-bg)); }
+    .evidence-label.unknown { color: var(--cc-unknown); background: color-mix(in srgb, var(--cc-unknown) 9%, var(--cc-bg)); }
+    .stack-source-link { color: var(--cc-accent); border: 0; background: transparent; font: inherit; padding: 3px 0; text-align: left; overflow-wrap: anywhere; }
+    .stack-source-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .observation-variables { display: grid; grid-template-columns: minmax(70px, 1fr) minmax(0, 2fr); gap: 8px 12px; font-size: 12px; }
+    .observation-variables dt { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
+    .observation-variables dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .observation-stack { padding-left: 22px; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; color: var(--cc-muted); }
+    .evidence-context { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; font-size: 12px; }
+    .evidence-context:empty { display: none; }
+    .debug-controls:empty { display: none; }
+    .debug-controls .action-row { margin: 0 0 10px; gap: 5px; }
+    .debug-controls .action { min-height: 30px; padding: 5px 8px; font-size: 12px; }
+    .evidence-context label { flex-shrink: 0; color: var(--cc-muted); }
+    .evidence-context select { flex: 1; min-width: 0; padding: 5px; font: inherit; color: var(--cc-ink); background: var(--cc-bg); border: 1px solid var(--cc-border); border-radius: 4px; }
+    .evidence-reference { margin-top: 8px; font-size: 11px; color: var(--cc-muted); }
+    summary:focus-visible, select:focus-visible { outline: 2px solid var(--cc-focus); outline-offset: 2px; }
+    @media (max-width: 400px) {
+      .composer-shortcut { display: none; }
+      .observation-variables { grid-template-columns: 1fr; gap: 3px; }
+      .observation-variables dd { margin-bottom: 8px; }
+    }
+    html, body { height: 100%; overflow: hidden; }
     body {
       margin: 0;
       color: var(--cc-ink);
@@ -34,13 +93,14 @@ export const runtimeMapStyles = String.raw`
       outline: 1px solid var(--cc-focus);
       outline-offset: 2px;
     }
-    .app { min-height: 100vh; display: flex; flex-direction: column; }
+    .app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
     .shell { width: 100%; max-width: 780px; margin: 0 auto; }
     .app-header {
+      flex-shrink: 0;
       position: sticky;
       top: 0;
       z-index: 20;
-      padding: 9px 14px 0;
+      padding: 9px 14px;
       background: var(--cc-bg);
       border-bottom: 1px solid var(--cc-border);
     }
@@ -69,7 +129,7 @@ export const runtimeMapStyles = String.raw`
       text-align: left;
     }
     .session-title > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .session-chevron { flex: 0 0 auto; font-size: 10px; }
+    .session-chevron { flex: 0 0 auto; font-size: 10px; color: var(--cc-accent); }
     .session-status {
       display: flex;
       align-items: center;
@@ -81,7 +141,7 @@ export const runtimeMapStyles = String.raw`
     }
     .session-status.status-hidden { display: none; }
     .status-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .55; }
-    .status-dot.primary { color: var(--cc-ink); opacity: 1; }
+    .status-dot.primary { color: var(--cc-accent); opacity: 1; }
     .status-dot.success { color: var(--cc-success); opacity: 1; }
     .status-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .header-actions { display: flex; align-items: center; flex: 0 0 auto; }
@@ -100,7 +160,7 @@ export const runtimeMapStyles = String.raw`
       text-align: left;
     }
     .model-provider-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-    .model-provider-chevron { flex: 0 0 auto; color: currentColor; font-size: 11px; }
+    .model-provider-chevron { flex: 0 0 auto; color: var(--cc-accent); font-size: 11px; }
     .tabs { display: flex; gap: 2px; margin-top: 7px; overflow-x: auto; scrollbar-width: none; }
     .tabs::-webkit-scrollbar { display: none; }
     .tab {
@@ -115,7 +175,7 @@ export const runtimeMapStyles = String.raw`
       font-size: 12px;
       font-weight: 500;
     }
-    .tab[aria-selected="true"] { color: var(--cc-ink); border-bottom-color: var(--cc-ink); }
+    .tab[aria-selected="true"] { color: var(--cc-accent); border-bottom-color: var(--cc-accent); }
     .tab-count { margin-left: 4px; color: var(--cc-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
     .pause-rail {
       display: none;
@@ -141,7 +201,7 @@ export const runtimeMapStyles = String.raw`
       font-size: 11px;
     }
     .pause-chip.selected { color: var(--cc-ink); background: var(--cc-surface); }
-    main { flex: 1; width: 100%; max-width: 780px; margin: 0 auto; padding: 22px 14px 32px; }
+    main { flex: 1; min-height: 0; overflow-y: auto; width: 100%; max-width: 780px; margin: 0 auto; padding: 22px 14px 32px; }
     .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
     .section-heading h2 { margin: 0; font-size: 14px; font-weight: 600; text-wrap: balance; }
     .section-heading p { margin: 2px 0 0; color: var(--cc-muted); font-size: 11px; }
@@ -161,7 +221,7 @@ export const runtimeMapStyles = String.raw`
       border-radius: var(--cc-radius);
       text-align: left;
     }
-    .source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family, ui-monospace, monospace); font-weight: 500; }
+    .source-name { color: var(--cc-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family, ui-monospace, monospace); font-weight: 500; }
     .explanation-sections { margin-top: 20px; border-top: 1px solid var(--cc-border); }
     .explanation-section { padding: 16px 0; border-bottom: 1px solid var(--cc-border); }
     .explanation-section h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
@@ -181,14 +241,14 @@ export const runtimeMapStyles = String.raw`
       font-weight: 500;
     }
     .action.primary { color: var(--cc-on-strong); background: var(--cc-strong); }
-    .action.quiet { color: var(--cc-muted); background: transparent; }
+    .action.quiet { color: var(--cc-accent); background: transparent; }
     .empty-state { padding: 38px 0 0; }
     .empty-copy { max-width: 560px; }
     .empty-state h2 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
     .empty-state p { max-width: 62ch; margin: 0; color: var(--cc-muted); text-wrap: pretty; }
     .conversation { width: 100%; padding: 4px 0 24px; }
     .chat-turn { margin: 0; }
-    .chat-turn.user { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    .chat-turn.user { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 12px; }
     .chat-turn.assistant { margin-bottom: 28px; }
     .chat-turn:last-child { margin-bottom: 0; }
     .chat-body { max-width: 70ch; overflow-wrap: anywhere; white-space: pre-wrap; text-wrap: pretty; }
@@ -221,7 +281,7 @@ export const runtimeMapStyles = String.raw`
       width: fit-content;
       max-width: min(85%, 70ch);
       padding: 8px 12px;
-      background: var(--cc-user-message);
+      background: var(--cc-accent-wash);
       border-radius: var(--cc-radius);
     }
     .thinking-indicator {
@@ -399,12 +459,13 @@ export const runtimeMapStyles = String.raw`
     .skeleton-block { height: 96px; margin-top: 16px; background: var(--cc-surface); border-radius: var(--cc-radius); }
     .busy-label { color: var(--cc-ink); font-weight: 500; }
     .composer {
-      position: sticky;
-      bottom: 0;
+      position: relative;
+      flex-shrink: 0;
       z-index: 20;
       margin-top: auto;
       padding: 10px 14px 14px;
       background: var(--cc-bg);
+      border-top: 1px solid var(--cc-border);
     }
     .composer-shell { width: 100%; max-width: 752px; margin: 0 auto; }
     .composer-inner {
@@ -415,7 +476,7 @@ export const runtimeMapStyles = String.raw`
       border-radius: 10px;
       transition: border-color 150ms ease, background-color 150ms ease;
     }
-    .composer-inner:focus-within { border-color: var(--cc-focus); }
+    .composer-inner:focus-within { border-color: var(--cc-accent); outline: 2px solid var(--cc-accent-wash); }
     .composer-inner.busy { background: var(--cc-surface); }
     .composer textarea {
       display: block;
@@ -484,13 +545,13 @@ export const runtimeMapStyles = String.raw`
       .pause-chip:hover { color: var(--cc-ink); background: var(--cc-surface-hover); }
       .source-link:hover { background: var(--cc-surface-hover); }
       .action:hover { background: var(--cc-surface-hover); }
-      .action.primary:hover { opacity: .88; }
-      .action.quiet:hover { color: var(--cc-ink); background: var(--cc-surface-hover); opacity: 1; }
+      .action.primary:hover { background: var(--cc-accent-hover); }
+      .action.quiet:hover { color: var(--cc-accent); background: var(--cc-accent-wash); opacity: 1; }
       .path-node:hover { background: var(--cc-surface-hover); }
       .breakpoint-control:hover { color: var(--cc-ink); background: var(--cc-surface-hover); }
       .stack-frame:hover { background: var(--cc-surface-hover); }
       .composer-inner:hover { border-color: var(--cc-muted); }
-      .send:hover { opacity: .84; }
+      .send:hover:not(:disabled) { background: var(--cc-accent-hover); }
     }
     .model-provider:active:not(:disabled),
     .session-title:active:not(:disabled),

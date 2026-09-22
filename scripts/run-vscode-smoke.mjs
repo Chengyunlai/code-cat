@@ -5,10 +5,13 @@ import { fileURLToPath } from "node:url";
 import { runTests } from "@vscode/test-electron";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const defaultExecutable =
-  process.platform === "darwin"
-    ? "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-    : undefined;
+let defaultExecutable;
+if (process.platform === "darwin") {
+  for (const name of ["Code", "Electron"]) {
+    const candidate = `/Applications/Visual Studio Code.app/Contents/MacOS/${name}`;
+    try { await access(candidate); defaultExecutable = candidate; break; } catch { /* Try the other app layout. */ }
+  }
+}
 const vscodeExecutablePath = process.env.CODE_CAT_VSCODE_EXECUTABLE ?? defaultExecutable;
 
 if (!vscodeExecutablePath) {

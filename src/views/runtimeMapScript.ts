@@ -22,7 +22,13 @@ export const runtimeMapScript = String.raw`
       statusLabel: document.getElementById('status-label'),
       tabs: document.getElementById('tabs'),
       variableCount: document.getElementById('variable-count'),
+      evidenceContext: document.getElementById('evidence-context'),
+      cancelQuestion: document.getElementById('cancel-question'),
+      debugControls: document.getElementById('debug-controls'),
+      primaryDebugAction: document.getElementById('primary-debug-action'),
     };
+    const openEvidence = new Set();
+    let restoredRetry;
     let activeTab = 'overview';
     let requestPending = false;
     let renderedChatMessageCount = 0;
@@ -49,6 +55,7 @@ export const runtimeMapScript = String.raw`
     };
 
     document.getElementById('locate').addEventListener('click', submitQuestion);
+    elements.cancelQuestion.addEventListener('click', () => vscode.postMessage({ type: 'cancelQuestion' }));
     elements.configureModel.addEventListener('click', () => vscode.postMessage({ type: 'configureModel' }));
     elements.conversationSwitcher.addEventListener('click', () => {
       vscode.postMessage({ type: 'showConversationHistory' });
@@ -64,11 +71,24 @@ export const runtimeMapScript = String.raw`
       resizeQuestion();
       updateSendAvailability();
     });
+    document.addEventListener('click', (event) => {
+      const menu = document.getElementById('tools-menu');
+      if (!menu.contains(event.target)) menu.open = false;
+    });
+    document.addEventListener('keydown', (event) => {
+      const menu = document.getElementById('tools-menu');
+      if (event.key === 'Escape' && menu.open) {
+        menu.open = false;
+        menu.querySelector('summary').focus();
+      }
+    });
     elements.tabs.addEventListener('click', (event) => {
       const tab = event.target.closest('[data-tab]');
       if (!tab) return;
       activeTab = tab.dataset.tab;
+      document.getElementById('tools-menu').open = false;
       render(currentState);
+      elements.content.focus({ preventScroll: true });
     });
     elements.tabs.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
@@ -89,17 +109,24 @@ export const runtimeMapScript = String.raw`
         const nextChatMessageCount = (nextState.chatMessages || []).length;
         const shouldRevealLatest =
           nextChatMessageCount > renderedChatMessageCount;
+        const followingLatest = elements.content.scrollHeight - elements.content.scrollTop - elements.content.clientHeight < 80;
+        const submittedQuestion = nextState.chatMessages?.at(-1)?.role === 'user';
         if (
           (renderedConversationId && nextState.conversationId !== renderedConversationId) ||
-          shouldRevealLatest
+          (shouldRevealLatest && submittedQuestion)
         ) {
           activeTab = 'overview';
+        }
+        if (renderedConversationId && nextState.conversationId !== renderedConversationId) {
+          elements.question.value = '';
+          openEvidence.clear();
+          restoredRetry = undefined;
         }
         renderedConversationId = nextState.conversationId;
         renderedChatMessageCount = nextChatMessageCount;
         currentState = nextState;
         render(currentState);
-        if (shouldRevealLatest) {
+        if (shouldRevealLatest && (followingLatest || submittedQuestion)) {
           revealLatestConversationItem();
         }
         vscode.postMessage({
@@ -218,6 +245,8 @@ export const runtimeMapScript = String.raw`
     }
 
     function render(state) {
+      const scrollTop = elements.content.scrollTop;
+      const focusedId = document.activeElement?.id;
       requestPending = Boolean(state.requestPending || state.busyMessage);
       const route = state.route;
       const frames = state.frames || [];
@@ -239,34 +268,48 @@ export const runtimeMapScript = String.raw`
       updateStatus(state);
       updateTabs(state);
       renderPauseRail(state);
+      renderEvidenceContext(state);
+      elements.debugControls.replaceChildren();
+      if (pauses.length) appendDebugActions(elements.debugControls, state);
+      elements.debugControls.querySelector('[data-debug="stepOver"]')?.remove();
+      elements.debugControls.querySelector('[data-action="explain"]')?.remove();
+      renderPrimaryDebugAction(state);
+      if (state.retryQuestion && restoredRetry !== state.retryQuestion) {
+        if (!elements.question.value.trim()) elements.question.value = state.retryQuestion;
+        restoredRetry = state.retryQuestion;
+        resizeQuestion();
+      }
+      if (!state.retryQuestion) restoredRetry = undefined;
       elements.content.replaceChildren();
       const view = document.createElement('div');
       view.className = 'view';
       elements.composerMode.textContent = !state.workspaceOpen
         ? '需要打开 Python 项目'
+        : pauses.length ? (selectedPauseIsLive(state) ? '基于当前暂停' : '历史 · ' +
+          (pauses.find((pause) => pause.selected)?.label.split(' · ').at(-1) || '已记录现场'))
         : route || chatMessages.length ? '继续理解当前项目' : '项目代码理解';
       elements.question.placeholder = !state.workspaceOpen
         ? '打开项目后即可定位代码路径'
-        : route
+        : pauses.length
+          ? '继续追问这个现场，例如：这个值为什么会这样？'
+          : route
           ? '继续追问当前代码路径，或输入新的项目问题'
           : '询问当前项目的代码、调用链或调试问题';
       const sendLabel = '发送消息';
       elements.send.title = sendLabel;
       elements.send.setAttribute('aria-label', sendLabel);
-      elements.question.disabled = requestPending || !state.workspaceOpen;
+      elements.question.disabled = !state.workspaceOpen;
+      elements.cancelQuestion.hidden = state.requestKind !== 'question';
       updateSendAvailability();
       elements.composerInner.classList.toggle('busy', requestPending);
-      if (state.requestPending || state.busyMessage) {
-        if (activeTab === 'overview' && chatMessages.length) {
-          renderOverview(view, state);
-        }
-        renderBusy(view, state.busyMessage, state);
-      }
-      else if (activeTab === 'path') renderPath(view, route);
+      if (activeTab === 'path') renderPath(view, route);
       else if (activeTab === 'stack') renderStack(view, state);
       else if (activeTab === 'variables') renderVariables(view, state);
       else renderOverview(view, state);
+      if (state.requestPending || state.busyMessage) renderBusy(view, state.busyMessage, state);
       elements.content.appendChild(view);
+      elements.content.scrollTop = scrollTop;
+      if (focusedId === 'observation-select') document.getElementById(focusedId)?.focus({ preventScroll: true });
     }
 
     function submitQuestion() {
@@ -294,7 +337,6 @@ export const runtimeMapScript = String.raw`
     function beginLocalRequest(buttons) {
       if (requestPending) return false;
       requestPending = true;
-      elements.question.disabled = true;
       elements.send.disabled = true;
       elements.pauseRail.querySelectorAll('button').forEach((button) => { button.disabled = true; });
       (buttons || []).forEach((button) => { button.disabled = true; });
@@ -322,7 +364,7 @@ export const runtimeMapScript = String.raw`
 
     function revealLatestConversationItem() {
       const candidates = elements.content.querySelectorAll(
-        '.thinking-indicator, .chat-turn',
+        '.thinking-indicator, .chat-turn, .observation',
       );
       const latest = candidates[candidates.length - 1];
       latest?.scrollIntoView({ block: 'nearest' });
@@ -470,7 +512,7 @@ export const runtimeMapScript = String.raw`
     function renderOverview(root, state) {
       const messages = state.chatMessages || [];
       if (messages.length) {
-        renderConversation(root, state.chatMessages);
+        renderConversation(root, state.chatMessages, state);
       } else {
         renderEmpty(root, state);
       }
@@ -480,7 +522,8 @@ export const runtimeMapScript = String.raw`
       ) {
         renderTutorMessage(root, state);
       }
-      if (state.route) {
+      if (state.captureError) root.appendChild(emptyNotice(state.captureError));
+      if (state.route && !(state.pauses || []).length) {
         renderExplorationContext(root, state);
       }
     }
@@ -504,10 +547,14 @@ export const runtimeMapScript = String.raw`
       }
     }
 
-    function renderConversation(root, messages) {
+    function renderConversation(root, messages, state) {
       const conversation = document.createElement('section');
       conversation.className = 'conversation';
       messages.forEach((message) => {
+        if (message.observation) {
+          renderObservation(conversation, message, state);
+          return;
+        }
         const turn = document.createElement('article');
         turn.className = 'chat-turn ' + message.role;
         turn.setAttribute(
@@ -517,10 +564,187 @@ export const runtimeMapScript = String.raw`
         const body = document.createElement('div');
         body.className = 'chat-body rich-text';
         renderRichText(body, message.text);
+        if (message.role === 'assistant' && message.pauseId) {
+          body.querySelectorAll('p > strong:first-child, h3').forEach((label) => {
+            const meaning = {
+              '已观察': 'observed', '观察事实': 'observed',
+              '源码推断': 'inference', '推断': 'inference',
+              '还不能确定': 'unknown', '未知': 'unknown', '待验证': 'unknown',
+            }[label.textContent.trim().replace(/[：:]$/u, '')];
+            if (meaning) label.classList.add('evidence-label', meaning);
+          });
+        }
         turn.appendChild(body);
+        if (message.pauseId && message.role === 'assistant' && message.pauseId !== state.livePauseId) {
+          const evidence = document.createElement('p');
+          evidence.className = 'evidence-reference';
+          evidence.textContent = '依据历史观察 · ' + (message.evidenceLabel || '暂停现场');
+          const available = (state.pauses || []).some((pause) => pause.id === message.pauseId);
+          if (!available) evidence.textContent += ' · 快照已释放';
+          turn.appendChild(evidence);
+        }
         conversation.appendChild(turn);
       });
       root.appendChild(conversation);
+    }
+
+    function renderObservation(root, message, state) {
+      const pause = (state.pauses || []).find((item) => item.id === message.pauseId);
+      const observation = document.createElement('article');
+      observation.className = 'observation';
+      const header = document.createElement('div');
+      header.className = 'observation-header';
+      const frame = pause?.frames[0];
+      const title = document.createElement(frame?.location ? 'button' : 'strong');
+      title.textContent = message.evidenceLabel || '暂停现场';
+      if (frame?.location) {
+        title.type = 'button';
+        title.className = 'observation-location';
+        title.title = '在编辑器中打开这处源码';
+        title.addEventListener('click', () => {
+          vscode.postMessage({ type: 'selectPause', pauseId: pause.id });
+          vscode.postMessage({ type: 'selectFrame', frameId: frame.id });
+        });
+      }
+      const status = document.createElement('span');
+      status.className = 'observation-status';
+      status.textContent = pause && pause.id === state.livePauseId ? '当前暂停' : pause ? '历史快照' : '快照已释放';
+      if (pause && pause.id === state.livePauseId) status.classList.add('live');
+      if (pause?.reason === 'exception') status.classList.add('exception');
+      header.append(title, status);
+      observation.appendChild(header);
+      if (!pause) {
+        observation.appendChild(emptyNotice('这次观察的记录已保留。原始运行快照未保存到磁盘，请重新调试以获得证据。'));
+        root.appendChild(observation);
+        return;
+      }
+      const hint = document.createElement('p');
+      hint.className = 'observation-hint';
+      hint.textContent = pause.reason === 'exception'
+        ? '程序因异常暂停。这里记录的是异常发生时的现场。'
+        : '暂停在这行，通常尚未执行。';
+      observation.appendChild(hint);
+      const currentStatement = pause.source?.split('\n').find((line) => line.startsWith('>'));
+      if (currentStatement) {
+        const statement = document.createElement('pre');
+        statement.className = 'observation-source';
+        appendPythonSource(statement, currentStatement.replace(/^>\s*\d+:\s*/u, ''));
+        statement.setAttribute('aria-label', '暂停处源码，尚不能据此认定执行完成');
+        observation.appendChild(statement);
+      }
+      const details = document.createElement('details');
+      details.className = 'observation-evidence';
+      details.open = openEvidence.has(pause.id);
+      const summary = document.createElement('summary');
+      summary.textContent = '查看依据';
+      details.appendChild(summary);
+      if (pause.source) {
+        const pre = document.createElement('pre');
+        pre.className = 'observation-source';
+        appendPythonSource(pre, pause.source);
+        details.appendChild(pre);
+      } else details.appendChild(emptyNotice(pause.captureNote || '未采集到相关源码。'));
+      const variables = document.createElement('dl');
+      variables.className = 'observation-variables';
+      pause.variables.forEach((variable) => {
+        const name = document.createElement('dt');
+        name.textContent = variable.name;
+        const value = document.createElement('dd');
+        value.textContent = variable.value;
+        variables.append(name, value);
+      });
+      details.appendChild(variables);
+      if (!pause.variables.length) details.appendChild(emptyNotice('未采集到变量，不能据此判断值为空。'));
+      const stack = document.createElement('ol');
+      stack.className = 'observation-stack';
+      pause.frames.forEach((caller) => {
+        const item = document.createElement('li');
+        const label = caller.name + ' · ' + caller.fileLabel;
+        if (caller.location) {
+          const link = actionButton(label, 'quiet stack-source-link', () => {
+            vscode.postMessage({ type: 'selectPause', pauseId: pause.id });
+            vscode.postMessage({ type: 'selectFrame', frameId: caller.id });
+          });
+          item.appendChild(link);
+        } else item.textContent = label;
+        stack.appendChild(item);
+      });
+      details.appendChild(stack);
+      details.addEventListener('toggle', () => {
+        if (!details.isConnected) return;
+        if (details.open) openEvidence.add(pause.id); else openEvidence.delete(pause.id);
+      });
+      observation.appendChild(details);
+      const explain = actionButton('解释一下', 'quiet', () => {
+        if (requestPending) return;
+        vscode.postMessage({ type: 'selectPause', pauseId: pause.id });
+        vscode.postMessage({ type: 'explain', question: '解释这次暂停：这行在判断或改变什么？有哪些证据，下一步如何验证？' });
+      });
+      explain.disabled = requestPending;
+      const hasAnswer = (state.chatMessages || []).some((item) =>
+        item.role === 'assistant' && !item.observation && item.pauseId === pause.id);
+      if (!hasAnswer && pause.selected) observation.appendChild(explain);
+      root.appendChild(observation);
+    }
+
+    function appendPythonSource(root, source) {
+      const tokens = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|#[^\n]*|\b(?:if|else|elif|for|while|def|class|return|raise|try|except|finally|with|as|import|from|in|is|not|and|or|None|True|False|async|await|yield)\b|\b\d+(?:\.\d+)?\b)/gu;
+      let cursor = 0;
+      for (const match of source.matchAll(tokens)) {
+        root.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+        const token = document.createElement('span');
+        token.className = match[0].startsWith('#') ? 'syntax-comment'
+          : /^["']/u.test(match[0]) ? 'syntax-string'
+          : /^\d/u.test(match[0]) ? 'syntax-number' : 'syntax-keyword';
+        token.textContent = match[0];
+        root.appendChild(token);
+        cursor = match.index + match[0].length;
+      }
+      root.appendChild(document.createTextNode(source.slice(cursor)));
+    }
+
+    function renderEvidenceContext(state) {
+      const root = elements.evidenceContext;
+      root.replaceChildren();
+      const pauses = state.pauses || [];
+      if (!pauses.length) return;
+      const label = document.createElement('label');
+      label.textContent = '提问依据';
+      label.htmlFor = 'observation-select';
+      const select = document.createElement('select');
+      select.id = 'observation-select';
+      pauses.forEach((pause, index) => {
+        const option = document.createElement('option');
+        option.value = pause.id;
+        option.textContent = '观察 ' + (index + 1) + ' · ' + pause.label + (pause.id === state.livePauseId ? ' · 当前暂停' : ' · 历史');
+        option.selected = pause.selected;
+        select.appendChild(option);
+      });
+      select.addEventListener('change', () => vscode.postMessage({ type: 'selectPause', pauseId: select.value }));
+      root.append(label, select);
+    }
+
+    function renderPrimaryDebugAction(state) {
+      const root = elements.primaryDebugAction;
+      root.replaceChildren();
+      if (activeTab !== 'overview') {
+        root.appendChild(actionButton('返回对话', 'quiet', () => switchTab('overview')));
+        return;
+      }
+      if (selectedPauseIsLive(state)) {
+        const next = actionButton('单步验证', 'primary', () => {
+          if (!beginLocalRequest([next])) return;
+          vscode.postMessage({ type: 'debugCommand', command: 'stepOver' });
+        });
+        next.title = '执行当前行并在下一处暂停（Step Over），验证你的判断';
+        next.dataset.debug = 'stepOver';
+        next.disabled = requestPending;
+        root.appendChild(next);
+      } else if (state.livePauseId) {
+        root.appendChild(actionButton('回到当前暂停', 'quiet', () => {
+          vscode.postMessage({ type: 'selectPause', pauseId: state.livePauseId });
+        }));
+      }
     }
 
     function renderExplorationContext(root, state) {
@@ -574,7 +798,7 @@ export const runtimeMapScript = String.raw`
       debugActions.className = 'debug-invitation-actions';
       const startGuidedDebugAction = (label) => {
         const startDebug = actionButton(label, 'primary', () => {
-          activeTab = 'path';
+          activeTab = 'overview';
           render(currentState);
           vscode.postMessage({ type: 'startDebug', question: route.question });
         });
@@ -614,16 +838,7 @@ export const runtimeMapScript = String.raw`
       debugCopy.append(debugTitle, debugDetail);
       debugInvitation.append(debugCopy, debugActions);
 
-      const actions = document.createElement('div');
-      actions.className = 'exploration-actions';
-      actions.appendChild(actionButton('查看路径图', 'quiet', () => switchTab('path')));
-      actions.appendChild(actionButton('追问这个位置', 'quiet', focusExplorationQuestion));
-      if (route.canRevealMore) {
-        actions.appendChild(actionButton('继续下一处', 'quiet', () => {
-          vscode.postMessage({ type: 'revealNextRouteNode' });
-        }));
-      }
-      section.append(core, debugInvitation, actions);
+      section.append(core, debugInvitation);
       root.appendChild(section);
     }
 
@@ -772,6 +987,7 @@ export const runtimeMapScript = String.raw`
       }
       const fragment = document.getElementById('debug-actions').content.cloneNode(true);
       const requestButtons = Array.from(fragment.querySelectorAll('button'));
+      requestButtons.forEach((button) => { button.disabled = requestPending; });
       fragment.querySelectorAll('[data-debug]').forEach((button) => {
         button.addEventListener('click', () => {
           if (!beginLocalRequest(requestButtons)) return;
@@ -1036,6 +1252,7 @@ export const runtimeMapScript = String.raw`
 
     function switchTab(tab) {
       activeTab = tab;
+      document.getElementById('tools-menu').open = false;
       render(currentState);
     }
 

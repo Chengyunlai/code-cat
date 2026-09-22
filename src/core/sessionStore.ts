@@ -106,19 +106,27 @@ export class SessionStore implements vscode.Disposable {
     if (pause.sessionId !== this.state.debugSessionId) {
       return;
     }
-    this.update({
+    const evidenceLabel = pauseLabel(pause);
+    this.updateConversation({
       ...this.state,
+      chatMessages: [...this.state.chatMessages, {
+        id: randomUUID(), role: "assistant" as const,
+        text: `已记录观察：${evidenceLabel}。这是暂停时的快照，不代表当前行已执行完成。`,
+        pauseId: pause.id, evidenceLabel, observation: true,
+      }].slice(-MAX_CHAT_MESSAGES),
       pauses: [...this.state.pauses, pause],
       selectedPauseId: pause.id,
       selectedFrameId: pause.frames[0]?.id,
       debugStatus: "paused",
       tutorMessage: undefined,
       contentMode: "debug",
+      captureError: undefined,
     });
   }
 
   public selectPause(pauseId: string, frameId?: number): void {
     const pause = this.state.pauses.find((candidate) => candidate.id === pauseId);
+    if (!pause) return;
     const tutorMessage =
       isPauseTutorMessage(this.state.tutorMessage) &&
       this.state.tutorMessage.pauseId === pauseId
@@ -148,7 +156,7 @@ export class SessionStore implements vscode.Disposable {
     if (this.state.debugSessionId !== sessionId || this.state.debugStatus === "running") {
       return;
     }
-    this.update({ ...this.state, debugStatus: "running", contentMode: "debug" });
+    this.update({ ...this.state, debugStatus: "running", contentMode: "debug", captureError: undefined });
   }
 
   public restoreDebugSessionPaused(sessionId: string): void {
@@ -171,6 +179,7 @@ export class SessionStore implements vscode.Disposable {
       selectedFrameId: undefined,
       tutorMessage: undefined,
       busyMessage: undefined,
+      captureError: undefined,
     });
   }
 
@@ -187,13 +196,22 @@ export class SessionStore implements vscode.Disposable {
   }
 
   public setTutorMessage(message: TutorMessage): void {
-    if (isPauseTutorMessage(message) && message.pauseId !== this.state.selectedPauseId) {
-      this.update({ ...this.state, busyMessage: undefined });
-      return;
-    }
-    this.update({
+    const pause = isPauseTutorMessage(message)
+      ? this.state.pauses.find((candidate) => candidate.id === message.pauseId)
+      : undefined;
+    const chatMessages = message.kind === "pause" && pause
+      ? [...this.state.chatMessages, {
+          id: message.id, role: "assistant" as const,
+          text: [message.explanation.whatHappened, message.explanation.whyItMatters,
+            message.explanation.inspectNext].join("\n\n"),
+          pauseId: pause.id, evidenceLabel: pauseLabel(pause),
+        }].slice(-MAX_CHAT_MESSAGES)
+      : this.state.chatMessages;
+    this.updateConversation({
       ...this.state,
-      tutorMessage: message,
+      chatMessages,
+      tutorMessage: isPauseTutorMessage(message) && message.pauseId !== this.state.selectedPauseId
+        ? undefined : message,
       contentMode: isPauseTutorMessage(message) ? "debug" : "chat",
       busyMessage: undefined,
     });
@@ -218,32 +236,41 @@ export class SessionStore implements vscode.Disposable {
       return undefined;
     }
     const priorMessages = this.state.chatMessages;
+    const pause = this.selectedPause();
     this.updateConversation({
       ...this.state,
       conversationTitle: resolvedConversationTitle(
         this.state.conversationTitle,
         question,
       ),
-      chatMessages: appendChatMessage(this.state.chatMessages, "user", question),
+      chatMessages: [...this.state.chatMessages, {
+        id: randomUUID(), role: "user" as const, text: question,
+        pauseId: pause?.id, evidenceLabel: pause ? pauseLabel(pause) : undefined,
+      }].slice(-MAX_CHAT_MESSAGES),
       tutorMessage: undefined,
       contentMode: "chat",
       busyMessage: "正在思考",
       requestKind: "question",
+      retryQuestion: undefined,
     });
     return priorMessages;
   }
 
-  public completeQuestionWithAnswer(answer: string): void {
+  public completeQuestionWithAnswer(answer: string, pause?: DebugPause): void {
     if (this.state.requestKind !== "question") {
       return;
     }
     this.updateConversation({
       ...this.state,
-      chatMessages: appendChatMessage(this.state.chatMessages, "assistant", answer),
+      chatMessages: [...this.state.chatMessages, {
+        id: randomUUID(), role: "assistant" as const, text: answer,
+        pauseId: pause?.id, evidenceLabel: pause ? pauseLabel(pause) : undefined,
+      }].slice(-MAX_CHAT_MESSAGES),
       tutorMessage: undefined,
       contentMode: "chat",
       busyMessage: undefined,
       requestKind: undefined,
+      retryQuestion: undefined,
     });
   }
 
@@ -259,11 +286,18 @@ export class SessionStore implements vscode.Disposable {
       contentMode: "chat",
       busyMessage: undefined,
       requestKind: undefined,
+      retryQuestion: [...this.state.chatMessages].reverse().find((item) => item.role === "user")?.text,
     });
   }
 
   public setBusy(message?: string): void {
     this.update({ ...this.state, busyMessage: message });
+  }
+
+  public reportCaptureError(sessionId: string): void {
+    if (this.state.debugSessionId !== sessionId) return;
+    this.update({ ...this.state, debugStatus: "paused", captureError:
+      "程序已暂停，但现场采集失败。请在 VS Code 调试工具栏单步或重新运行以重新采集；也可以继续询问已有观察。" });
   }
 
   public beginRequest(kind: SessionRequestKind): boolean {
@@ -278,7 +312,7 @@ export class SessionStore implements vscode.Disposable {
     if (this.state.requestKind !== kind) {
       return;
     }
-    this.update({ ...this.state, requestKind: undefined });
+    this.update({ ...this.state, requestKind: undefined, busyMessage: undefined });
   }
 
   public clear(): boolean {
@@ -412,6 +446,14 @@ function stateFromConversation(conversation: ConversationRecord): SessionState {
     debugStatus: "idle",
     contentMode: conversation.chatMessages.length > 0 ? "chat" : undefined,
   };
+}
+
+export function pauseLabel(pause: DebugPause): string {
+  const frame = pause.frames[0];
+  const location = frame?.location;
+  return location
+    ? `${location.path.split(/[\\/]/u).at(-1)}:${location.line}`
+    : frame?.name ?? "未知源码位置";
 }
 
 function createConversation(): ConversationRecord {

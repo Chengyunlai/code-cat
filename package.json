@@ -2,7 +2,7 @@
   "name": "code-cat",
   "displayName": "Code Cat",
   "description": "A debug-driven AI tutor for understanding Python code paths in VS Code.",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -58,6 +58,10 @@
       {
         "command": "codeCat.explainPause",
         "title": "Code Cat: Explain Current Pause"
+      },
+      {
+        "command": "codeCat.cancelQuestion",
+        "title": "Code Cat: Stop Answer"
       },
       {
         "command": "codeCat.clearSession",
@@ -125,33 +129,19 @@
       "codeCat": [
         {
           "id": "codeCat.runtimeMap",
-          "name": "Runtime Map",
+          "name": "代码对话",
           "type": "webview"
         },
         {
           "id": "codeCat.callStack",
           "name": "Call Stack",
-          "when": "codeCat.debugEvidenceVisible"
+          "when": "codeCat.debugEvidenceVisible",
+          "visibility": "collapsed"
         }
       ]
     },
     "menus": {
       "view/title": [
-        {
-          "command": "codeCat.startGuidedDebug",
-          "when": "view == codeCat.runtimeMap",
-          "group": "navigation@1"
-        },
-        {
-          "command": "codeCat.clearSession",
-          "when": "view == codeCat.runtimeMap",
-          "group": "navigation@2"
-        },
-        {
-          "command": "codeCat.configureModelProvider",
-          "when": "view == codeCat.runtimeMap",
-          "group": "navigation@3"
-        },
         {
           "command": "codeCat.explainPause",
           "when": "view == codeCat.callStack",
@@ -234,7 +224,69 @@
           "description": "Maximum number of variables captured from the top stack frame."
         }
       }
-    }
+    },
+    "colors": [
+      {
+        "id": "codeCat.accent",
+        "description": "Code Cat：可点击内容与主要操作。",
+        "defaults": {
+          "light": "#315bd6",
+          "dark": "#89a7ff",
+          "highContrastLight": "#0000aa",
+          "highContrast": "#a8c0ff"
+        }
+      },
+      {
+        "id": "codeCat.accentHover",
+        "description": "Code Cat：主要操作的悬停颜色。",
+        "defaults": {
+          "light": "#2548b0",
+          "dark": "#abc0ff",
+          "highContrastLight": "#000088",
+          "highContrast": "#cbd8ff"
+        }
+      },
+      {
+        "id": "codeCat.onAccent",
+        "description": "Code Cat：主要操作上的文字。",
+        "defaults": {
+          "light": "#ffffff",
+          "dark": "#101a33",
+          "highContrastLight": "#ffffff",
+          "highContrast": "#000000"
+        }
+      },
+      {
+        "id": "codeCat.observed",
+        "description": "Code Cat：已观察事实与当前暂停。",
+        "defaults": {
+          "light": "#18745c",
+          "dark": "#74d9b5",
+          "highContrastLight": "#00572d",
+          "highContrast": "#89f0bd"
+        }
+      },
+      {
+        "id": "codeCat.inference",
+        "description": "Code Cat：源码推断与代码关键字。",
+        "defaults": {
+          "light": "#6854bd",
+          "dark": "#baadff",
+          "highContrastLight": "#48228c",
+          "highContrast": "#d4c6ff"
+        }
+      },
+      {
+        "id": "codeCat.uncertainty",
+        "description": "Code Cat：未知与待验证信息。",
+        "defaults": {
+          "light": "#8c5a12",
+          "dark": "#e7bd77",
+          "highContrastLight": "#754200",
+          "highContrast": "#ffd78e"
+        }
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
