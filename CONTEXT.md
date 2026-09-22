@@ -2,6 +2,22 @@
 
 Code Cat helps a learner understand a Python project by combining model-guided reading routes with runtime debugger evidence.
 
+## Navigation and verification
+
+Read README.md → AGENTS.md → this file → examples/README.md → the relevant docs/implementation record. `examples/` is the canonical example root; stage examples start with `user_code/`, then `core/`. Keep these entries synchronized when public usage or implementation paths change.
+
+Run `npm run check` and `npm run smoke:vscode`. For rendered UI verification, compile then run `node test/webview/index.cjs` with Playwright available and Chrome installed (or CODE_CAT_BROWSER_EXECUTABLE set).
+
+## Pause conversation flow
+
+`DebugSessionObserver` captures stack, bounded variables and nearby workspace source at pause time. `SessionStore.recordPause` adds an observation to the conversation. Questions capture the selected pause before invoking `AiTutor.answerPauseQuestion`; late answers keep their original pause ID. Ordinary project questions still use route/chat classification when no snapshot exists.
+
+The conversation is the default UI. Observation details expose raw evidence progressively; only the next-step action stays beside the composer; advanced controls, evidence selection and model settings live under More. Users can edit drafts while a request is pending and cancel the active answer. Only the current successfully captured pause can control execution. Source snippets are recorded evidence, not executed-line traces.
+
+Raw snapshots remain in memory. Conversation text and observation references persist; restored conversations label unavailable snapshots explicitly. The current stage is documented in docs/implementation/stage-01.md.
+
+Visual roles are registered under `contributes.colors` as `codeCat.accent`, `accentHover`, `onAccent`, `observed`, `inference`, and `uncertainty`. CSS consumes the corresponding VS Code theme variables; defaults cover light, dark and both high-contrast modes. Users can override them with `workbench.colorCustomizations`. Semantic answer labels retain their text and only color explicit labels, without inferring certainty from arbitrary prose. Source and stack locations navigate through the existing validated frame path. Python highlighting is a safe, lightweight display tokenizer, not a parser.
+
 ## Language
 
 **Conversation**:

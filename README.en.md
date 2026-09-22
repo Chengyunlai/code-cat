@@ -10,6 +10,14 @@ location to a real breakpoint and updates the reading path from the actual call 
 > **Project status:** active prototype. The current release targets VS Code and Python projects;
 > APIs and stored workspace data may change before a stable release.
 
+## 0.1.6: ask, observe, and verify
+
+The main flow is **ask a question → pause in code → inspect an observation → ask follow-ups → step to verify**. Each debugger stop becomes an observation in the conversation. Follow-up answers use the selected snapshot, source captured at the pause, and recent conversation; they stay linked to that observation.
+
+The composer keeps just **Step to verify** (`单步验证`) and **More** (`更多`). More contains advanced debugger controls, evidence selection, reading views, and model settings. Expand **View evidence** (`查看依据`) within an observation to inspect source, variables, and call frames. You can keep editing a draft while an answer is pending, or stop the answer.
+
+Source and stack locations are clickable. Python snippets have basic syntax highlighting, and explicit labels distinguish observed facts, source inferences, and unknowns. Labels retain text alongside color. Try the [runnable inventory example](examples/stage-01-pause-conversation/user_code/README.md): ask why checkout did not charge, inspect inventory at a breakpoint, then step to verify the branch.
+
 ## Current vertical slice
 
 - Build a cached structural index of Python files, classes, functions, and async functions.
@@ -87,7 +95,7 @@ After installation, run **Developer: Reload Window** from the Command Palette so
 
 1. Open the Python project as a folder, not just an individual file.
 2. Run **Python: Select Interpreter** and choose the environment that can run the project.
-3. Click the model-provider pill in the Code Cat header, or run **Code Cat: Configure Model Provider**.
+3. Open the model-provider action under **More**, or run **Code Cat: Configure Model Provider**.
 4. Choose a provider, confirm its model, and enter its API key when required.
 5. Select **Test connection** after saving, or run **Code Cat: Test Model Provider** later.
 
@@ -170,11 +178,7 @@ conversation title beside **Code Cat /** to use the native VS Code picker:
 
 For a code question, the initial answer addresses only that question and introduces one **Core
 code location** with its file, exact line, and the reason it is the best starting point. Select
-**Open code** to jump directly to that line. Open **Path map** or select **Continue to next
-location** only when that evidence is useful; Code Cat then reveals one additional location in
-the map, CodeLens, and source hover. A planned path is a reading hypothesis, not a runtime call
-stack. Use **Ask about this location** whenever you want to name the branch, function, or failure
-case you care about before revealing more.
+**Open code** to jump directly to that line. Open the path view under **More** and select **Continue to next location** to reveal one additional location. A planned path is a reading hypothesis, not a runtime call stack. Ask follow-ups directly in the composer to focus on a branch, function, or failure case.
 
 ### 4. First guided-debug session
 
@@ -197,12 +201,13 @@ case you care about before revealing more.
    - a console entry point declared under `[project.scripts]` in `pyproject.toml`;
    - the currently open Python file as a final fallback.
 6. Choose an entry when Code Cat finds multiple launch configurations or project scripts.
-7. When debugpy pauses, return to the Code Cat activity-bar view to inspect the runtime trace,
-   call stack, and variables. VS Code may automatically switch to its Run and Debug view when
-   the session starts.
-8. Select **Explain current pause**, **Continue**, **Step Into**, or **Step Over**. If the process
-   exits without hitting the teaching breakpoint, Code Cat reports that no runtime evidence was
-   captured and offers **Run again**.
+7. When debugpy pauses, return to Code Cat. VS Code may have switched to Run and Debug. The conversation now contains an observation with captured source.
+8. Select **Explain** (`解释一下`) on an unanswered observation, or ask directly in the composer. Use **Step to verify** for Step Over; Step Into and Continue are under **More**. The highlighted statement normally has not executed yet.
+9. Expand **View evidence** to inspect source, variables, and call frames. Use the evidence selector under **More** to ask about an earlier observation. Historical observations cannot control execution.
+
+If execution exits without hitting the breakpoint, Code Cat reports that no runtime evidence was captured and offers **Run again**. If an answer fails, its question is restored only when the composer is empty, preserving any newer draft. Cancelled or late replies cannot overwrite the next question.
+
+Raw snapshots stay in memory; conversation text and observation references are saved locally. Reopened conversations explicitly mark released snapshots. Start debugging again to obtain fresh evidence.
 
 If the debug session was already running before Code Cat began observing it, stop it and start it again from Code Cat so the full runtime chain can be captured.
 
@@ -225,8 +230,7 @@ environment, and start guided debug again.
 
 Once a reading route exists, its Python source lines show a restrained `Code Cat · step/title`
 annotation. Hover the annotation or source line to see nearby code, the route context, and why
-the stop matters. After a structured pause explanation is available, the hover also includes
-**what happened**, **why it matters**, and **what to inspect next**.
+the stop matters. Pause explanations and follow-up answers stay in the main conversation.
 
 CodeLens actions above the exact source line provide progressively richer controls:
 
@@ -335,16 +339,11 @@ model response:
 - A planned route is limited to validated files and 1–8 bounded nodes; titles, summaries, and
   reasons are length-limited before entering session state. Its summary answers the current
   question without enumerating the complete route, and only the revealed prefix reaches the UI.
-- A pause explanation must decode into exactly three fields: **what happened**, **why it
-  matters**, and **what to inspect next**. Missing or malformed fields are never rendered as raw
-  model output; the paused source, fallback explanation, stack, variables, and debug actions stay
-  visible with an inline retry message.
+- Pause answers distinguish observations, source inferences, and unknowns when relevant. Answers retain the selected observation reference; they do not replace the reading route or its breakpoints.
 - Debug variables are normalized once at capture time: debugger grouping rows are removed,
   duplicate names are collapsed, credential-like names are redacted, line breaks are folded,
   and displayed values are bounded.
-- The **Call Stack** tab follows the reading order **top-frame source location → structured
-  explanation → real frames → next debug action**. Variables stay in their own tab so runtime
-  evidence never replaces the conversation.
+- Observations reveal raw evidence inline. Additional reading views stay under **More** so the conversation remains the default surface.
 - Conversational Markdown is rendered into a small safe subset of DOM elements; model text is
   never inserted as executable HTML.
 
@@ -382,4 +381,22 @@ protocol boundary.
 - Variable capture is limited to the top frame and bounded by settings.
 - No dedicated unit-test runner, CI, marketplace publishing metadata, telemetry, or multi-root
   route disambiguation yet. Conversation history is workspace-local rather than cloud-synced.
-- The webview currently renders a focused execution map rather than an unrestricted mind-map editor.
+- The conversation and pause evidence are the main interface; the path view supports progressive reading.
+- Name-based variable redaction does not remove every possible secret. Relevant source, the selected snapshot, and recent conversation are sent to the chosen model provider when asking a question.
+
+## Appearance and contributor navigation
+
+Colors follow VS Code light, dark, and high-contrast themes. Override these identifiers through `workbench.colorCustomizations`:
+
+| Identifier | Role |
+| --- | --- |
+| `codeCat.accent` | Links and primary actions |
+| `codeCat.accentHover` | Primary action hover |
+| `codeCat.onAccent` | Text on primary actions |
+| `codeCat.observed` | Observations, current pause, strings |
+| `codeCat.inference` | Source inferences, Python keywords |
+| `codeCat.uncertainty` | Unknowns, numeric literals |
+
+Contributor reading order: [AGENTS](AGENTS.md) → [CONTEXT](CONTEXT.md) → [example index](examples/README.md) → [implementation record](docs/implementation/stage-01.md). `examples/` is the canonical example root.
+
+For optional rendered UI verification, compile with `npm run compile`, then run `node test/webview/index.cjs` with Playwright resolvable by Node. The test uses installed Chrome by default; override its executable with `CODE_CAT_BROWSER_EXECUTABLE`. It checks interaction, theme overrides, contrast, and five rendered views, writing screenshots to `.vscode-test/ui/`. These views use sample data rather than live model responses.

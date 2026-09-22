@@ -13,4 +13,4 @@
 
 取消通过 VS Code CancellationToken 与 Promise 竞速结束请求。迟到的服务返回不能落入下一条问题。原始运行快照不持久化；聊天中的观察标识和回答会持久化。
 
-验证与提交状态见 [阶段记录](../../../docs/implementation/stage-01.md)。目前未提交。
+验证与提交状态见 [阶段记录](../../../docs/implementation/stage-01.md)。实现提交：`d1d6112dbcaa861387a978c98b107dbceafffbb0`。
