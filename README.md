@@ -2,9 +2,33 @@
 
 **简体中文** | [English](./README.en.md)
 
-Code Cat 是一个面向 Python 项目的 VS Code 代码阅读插件。围绕一个问题，你可以定位代码、在真实断点处观察，再与 AI 持续追问：哪些是已观察到的事实、哪些是源码推断，以及下一步如何验证。
+Code Cat 是一个面向 Python、TypeScript 和 JavaScript 项目的 AI 代码阅读插件，提供 VS Code 端和 JetBrains 预览端。围绕一个问题，你可以定位代码、在真实断点处观察，再与 AI 持续追问：哪些是已观察到的事实、哪些是源码推断，以及下一步如何验证。
 
-> **项目状态：** 正在积极开发的早期原型。目前支持 VS Code 和 Python 项目；稳定版本发布前，插件 API 和工作区数据结构仍可能调整。
+> **项目状态：** 正在积极开发的早期原型。目前支持 VS Code 中的 Python、TS / JS 代码阅读与 Python / Node 调试；稳定版本发布前，插件 API 和工作区数据结构仍可能调整。
+
+## 0.2.0：共享核心与 JetBrains 预览版
+
+两端复用同一个会话核心和聊天界面。WebStorm 2025.1 已验证 TS 真断点、源码观察及实际 JCEF 页面呈现；JetBrains 的变量与完整调用栈仍待接入。安装见 [JetBrains 指南](plugins/jetbrains/README.md)。
+
+## 0.1.9：历史回答保留断点入口
+
+定位代码的回答会分别保存阅读路径。回到历史回答可打开源码，或再次“用断点跟一遍”；调试运行中则显示“在这里打断点”，只补充断点，不替换当前路径。源码位置失效时会提示重新定位。旧版历史可恢复最后保存的路径，更早未保存的位置需要重新提问定位。
+
+## 0.1.8：边生成边理解
+
+回答会随着模型返回实时显示，支持 VS Code 内置模型，以及 OpenAI Responses / Chat Completions、Anthropic、Gemini 的流式协议。生成期间可以编辑草稿或停止；断流会提示重试，未完成内容不会作为正式答案保存。
+
+复杂问题按概念分节解释，并结合有长度限制的真实源码摘录。代码块提供基础高亮、语言标识和复制；点击回答中的源码引用可跳转到已验证的工作区文件。解释应区分源码、示意代码和运行证据，最后给出可验证的下一步，而不是堆砌符号名称。具体排版与内容质量仍取决于模型响应。
+
+参见[流式代码阅读示例](examples/stage-03-streamed-reading/user_code/README.md)。
+
+## 0.1.7：支持 TS / JS
+
+可直接在 TS / JS 仓库提问，不再要求包含 Python 文件。支持 `.ts`、`.tsx`、`.mts`、`.cts`、`.js`、`.jsx`、`.mjs`、`.cjs` 的索引、源码跳转与阅读提示。
+
+Node 调试优先使用项目已有的 `launch.json`（`node` / `pwa-node`）。没有配置时，打开 JS 入口可直接调试；普通 TS 文件可使用项目已安装的 `tsx`。其他 TS 项目请配置编译后的入口、`outFiles` 和 `sourceMaps`。TSX / JSX 支持阅读，执行需要项目的 Node 构建配置；浏览器调试暂不支持。
+
+命中断点后，仍在同一对话中查看观察、连续追问和单步验证。详见 [TS / JS 可运行示例](examples/stage-02-node-conversation/user_code/README.md)。
 
 ## 0.1.6：从问题到验证
 
@@ -39,13 +63,15 @@ Code Cat 把三类信息严格分开：
 ### 环境要求
 
 - VS Code 1.105 或更高版本。
-- Python 3.9 或更高版本；被阅读的项目可能要求更高版本。
+- Python 项目：Python 3.9 或更高版本；Node 项目：项目要求的 Node.js 版本。
 - VS Code 内置模型，或下文支持的任一模型服务 API Key。
 - 只有从源码构建 Code Cat 时才需要 Node.js 22 或更高版本。
 
-### 1. 安装 Python 扩展
+### 1. 按项目准备运行环境
 
-请先在 VS Code 扩展市场安装：
+TS / JS 项目使用 VS Code 内置语言服务与 Node 调试器，不需要 Python 扩展。运行 Node 项目需安装项目要求的 Node.js 版本。
+
+只有调试 Python 项目时，才需要在 VS Code 扩展市场安装：
 
 - **Python** — `ms-python.python`，必需
 - **Python Debugger** — `ms-python.debugpy`，必需
@@ -91,8 +117,8 @@ code --install-extension "/absolute/path/to/code-cat-X.Y.Z.vsix" --force
 
 ### 3. 选择 Python 并配置模型
 
-1. 以文件夹方式打开 Python 项目，而不是只打开单个文件。
-2. 执行 **Python: Select Interpreter**，选择能够运行当前项目的环境。
+1. 以文件夹方式打开项目，而不是只打开单个文件。
+2. Python 项目执行 **Python: Select Interpreter**，选择能够运行当前项目的环境。
 3. 点击 Code Cat「更多」中的模型入口，或执行 **Code Cat: Configure Model Provider**。
 4. 选择模型服务，确认模型名，并在需要时输入 API Key。
 5. 保存后选择 **Test connection**，或执行 **Code Cat: Test Model Provider**。
@@ -200,7 +226,7 @@ AI 回答时输入框仍可编辑，点击“停止回答”可取消请求。�
 
 ## 源码行教学控制
 
-阅读路径建立后，对应的 Python 源码行会显示克制的 `Code Cat · 步骤/标题` 注解。
+阅读路径建立后，对应的 Python / TS / JS 源码行会显示克制的 `Code Cat · 步骤/标题` 注解。
 
 将鼠标悬停在注解或源码行上，可以查看附近代码、路径上下文和停在这里的原因。暂停后的 AI 解释与连续追问保留在主对话中。
 
@@ -348,3 +374,17 @@ packages/jetbrains-plugin/ 未来 PyCharm 调试器适配器和 JetBrains UI
 - 变量名脱敏并不保证清除所有敏感内容；发送问题时，相关源码、选定快照与近期对话会交给所选模型服务。
 
 阅读路径是待验证的假设。真实暂停提供运行证据；AI 的解释仍需要结合源码与下一步执行验证。
+
+## 跨 IDE 架构（0.2.0）
+
+Code Cat 已拆出 `packages/core`（会话、教学、模型与证据规则）、`packages/ui`（共享聊天界面）、`packages/engine`（JetBrains 的本地进程）。现有 `src` 继续作为 VS Code 宿主，`plugins/jetbrains` 提供 WebStorm 2025.1 预览版。
+
+JetBrains 安装、配置与限制见 [安装说明](plugins/jetbrains/README.md)。当前验证 TS 真断点及共享核心；变量与完整调用栈尚未接入 JetBrains，其他产品尚未逐一验证。VS Code 的现有调试能力保持不变。
+
+开发入口：`npm run test:engine`、`npm run build:jetbrains`、`npm run smoke:jetbrains`。架构与证据见 [Stage 04](docs/implementation/stage-04.md)，可运行示例见 [共享核心示例](examples/stage-04-shared-core/README.md)。
+
+0.2.1 优化 JetBrains 深色阅读：源码链接不再出现白色按钮块，减少重复标题和底部提示，输入区更紧凑。
+
+0.2.2 修正本地实现检索：优先扫描主源码目录，按精确符号声明选择源码，并提供当前仓库与 workspace 包身份。超出扫描范围时明确标记部分索引，避免把“没提供实现上下文”误说成“仓库没有实现”。包含 0.2.1 的界面修订。
+
+0.2.3 修正 JetBrains 的调试入口匹配：不会再无提示地运行另一个示例。入口不匹配时可选择目标文件、已有运行配置或仅放置断点；程序结束却未捕获暂停时明确提示检查入口与 source map。

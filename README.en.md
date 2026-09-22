@@ -2,13 +2,37 @@
 
 [简体中文](./README.md) | **English**
 
-Code Cat is an early VS Code prototype for **debug-driven Python code reading**. It turns a
+Code Cat is an early VS Code plugin with an experimental JetBrains host for **debug-driven Python, TypeScript and JavaScript code reading**. It turns a
 learner's question into a focused answer with a core source location, then optionally links that
 location to a real breakpoint and updates the reading path from the actual call stack whenever
 `debugpy` pauses.
 
-> **Project status:** active prototype. The current release targets VS Code and Python projects;
+> **Project status:** active prototype. The current release targets VS Code with Python and Node debugging;
 > APIs and stored workspace data may change before a stable release.
+
+## 0.2.0: shared core and JetBrains preview
+
+Both hosts reuse the conversation core and UI. WebStorm 2025.1 has been tested with a real TS breakpoint and JCEF evidence rendering. JetBrains variable capture and full stacks remain unsupported. See the [installation guide](plugins/jetbrains/README.md).
+
+## 0.1.9: reusable debugger entry points in history
+
+Each route answer retains its own reading path. Historical answers can reopen source or start guided debugging again. During an active debug session, the action only adds the saved breakpoint and preserves the current route. Invalid source locations prompt you to locate the code again. Older histories can recover their last saved route; previously discarded routes need a new question.
+
+## 0.1.8: streamed, source-grounded reading
+
+Answers appear as model text arrives through the VS Code model API or OpenAI Responses / Chat Completions, Anthropic, and Gemini streaming protocols. You can edit a draft or stop generation; disconnected or invalid responses are not saved as completed answers.
+
+Complex explanations use short sections, reading steps, and bounded real source excerpts. Code blocks have basic highlighting, language labels, and copy controls. Relative source references open validated workspace files. Prompts ask the model to distinguish source, illustrative code, and runtime evidence, then offer a concrete verification step. Formatting and teaching quality still depend on the selected model.
+
+See the [streamed reading example](examples/stage-03-streamed-reading/user_code/README.md).
+
+## 0.1.7: TypeScript and JavaScript support
+
+TS / JS workspaces can now answer project questions without containing Python files. Indexing, source navigation and reading guidance support `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, and `.cjs`.
+
+Node debugging prefers existing `node` / `pwa-node` launch configurations. Without one, open a JS entry file for direct launch. Plain TS files can use the project's installed `tsx`; otherwise configure a compiled entry, `outFiles`, and `sourceMaps`. TSX / JSX reading is supported; execution needs a project-specific Node build configuration. Browser debugging is not supported yet.
+
+Real pauses feed the same observation, follow-up and stepping flow. See the [runnable TS / JS example](examples/stage-02-node-conversation/user_code/README.md).
 
 ## 0.1.6: ask, observe, and verify
 
@@ -49,9 +73,11 @@ Source and stack locations are clickable. Python snippets have basic syntax high
 - Either a model exposed through the VS Code Language Model API, or an API key for one of the providers listed below.
 - Node.js 22 or newer only when building Code Cat from source.
 
-### 1. Install the Python extensions
+### 1. Prepare the project runtime
 
-Install these extensions from the VS Code Extensions view:
+TS / JS projects use VS Code’s built-in language service and Node debugger. Install the Node.js version required by your project. Python extensions are only required for Python debugging:
+
+Install these from the VS Code Extensions view:
 
 - **Python** — `ms-python.python` (required)
 - **Python Debugger** — `ms-python.debugpy` (required)
@@ -93,8 +119,8 @@ After installation, run **Developer: Reload Window** from the Command Palette so
 
 ### 3. Select Python and configure the model provider
 
-1. Open the Python project as a folder, not just an individual file.
-2. Run **Python: Select Interpreter** and choose the environment that can run the project.
+1. Open the project as a folder, not just an individual file.
+2. For Python projects, run **Python: Select Interpreter** and choose the environment that can run the project.
 3. Open the model-provider action under **More**, or run **Code Cat: Configure Model Provider**.
 4. Choose a provider, confirm its model, and enter its API key when required.
 5. Select **Test connection** after saving, or run **Code Cat: Test Model Provider** later.
@@ -400,3 +426,15 @@ Colors follow VS Code light, dark, and high-contrast themes. Override these iden
 Contributor reading order: [AGENTS](AGENTS.md) → [CONTEXT](CONTEXT.md) → [example index](examples/README.md) → [implementation record](docs/implementation/stage-01.md). `examples/` is the canonical example root.
 
 For optional rendered UI verification, compile with `npm run compile`, then run `node test/webview/index.cjs` with Playwright resolvable by Node. The test uses installed Chrome by default; override its executable with `CODE_CAT_BROWSER_EXECUTABLE`. It checks interaction, theme overrides, contrast, and five rendered views, writing screenshots to `.vscode-test/ui/`. These views use sample data rather than live model responses.
+
+## Cross-IDE architecture (0.2.0)
+
+`packages/core` owns conversations, teaching prompts, model protocols and evidence rules; `packages/ui` provides the shared conversation UI. VS Code remains in `src`. The experimental JetBrains host in `plugins/jetbrains` runs `packages/engine` through private stdio and stores credentials in PasswordSafe.
+
+The preview targets WebStorm 2025.1 (build 251). A real TypeScript source-map breakpoint has been tested. It captures the top pause location and source; variables and full stacks are not implemented in this host. Other JetBrains products and debuggers are not yet verified. See the [installation guide](plugins/jetbrains/README.md), [design record](docs/implementation/stage-04.md), and [runnable example](examples/stage-04-shared-core/README.md).
+
+Build with `npm run build:jetbrains`; validate with `npm run test:engine` and `npm run smoke:jetbrains`. The native build uses a locally installed IDE SDK (`CODE_CAT_JETBRAINS_HOME`), JDK 21, Python 3 and Node.js 20+.
+
+0.2.2 prioritizes project source directories and exact symbol declarations, centers excerpts around matched definitions, and supplies local package identities. Partial retrieval must not be treated as evidence that an implementation is absent. Includes the 0.2.1 JetBrains dark-theme and inline-link refinements.
+
+0.2.3 matches JetBrains launch configurations to the requested breakpoint target. When entries differ, users choose a target-file copy, an existing configuration, or breakpoint placement only. The original configuration is preserved; sessions ending without a pause show a diagnostic message.
