@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 
-export interface PythonSymbol {
+export interface ProjectSymbol {
   readonly file: string;
   readonly absolutePath: string;
   readonly line: number;
@@ -10,19 +10,19 @@ export interface PythonSymbol {
   readonly signature: string;
 }
 
-export interface PythonProjectSnapshot {
+export interface ProjectSnapshot {
   readonly files: readonly string[];
-  readonly symbols: readonly PythonSymbol[];
+  readonly symbols: readonly ProjectSymbol[];
   readonly truncated: boolean;
 }
 
-export interface PythonProjectReadinessIssue {
-  readonly kind: "no-workspace" | "no-python-files";
+export interface ProjectReadinessIssue {
+  readonly kind: "no-workspace" | "no-source-files";
   readonly message: string;
 }
 
-type WorkspaceRelativePythonPath = string & {
-  readonly __workspaceRelativePythonPath: unique symbol;
+type WorkspaceRelativeSourcePath = string & {
+  readonly __workspaceRelativeSourcePath: unique symbol;
 };
 
 const SYMBOL_PATTERN = /^(\s*)(async\s+def|def|class)\s+([A-Za-z_]\w*)\s*([^:]*)\s*:/;
@@ -30,13 +30,13 @@ const EXCLUDE_GLOB = "**/{.git,.venv,venv,node_modules,__pycache__,dist,build,.t
 const MAX_PROMPT_SYMBOLS = 600;
 const STABLE_PROMPT_SYMBOL_PREFIX = 560;
 
-export class PythonProjectIndex implements vscode.Disposable {
-  private cachedSnapshot: PythonProjectSnapshot | undefined;
+export class ProjectIndex implements vscode.Disposable {
+  private cachedSnapshot: ProjectSnapshot | undefined;
   private readonly watcher: vscode.FileSystemWatcher;
   private readonly disposables: vscode.Disposable[] = [];
 
   public constructor() {
-    this.watcher = vscode.workspace.createFileSystemWatcher("**/*.py");
+    this.watcher = vscode.workspace.createFileSystemWatcher("**/*.{py,ts,tsx,mts,cts,js,jsx,mjs,cjs}");
     this.disposables.push(
       this.watcher,
       this.watcher.onDidCreate(() => this.invalidate()),
@@ -45,7 +45,7 @@ export class PythonProjectIndex implements vscode.Disposable {
     );
   }
 
-  public async snapshot(): Promise<PythonProjectSnapshot> {
+  public async snapshot(): Promise<ProjectSnapshot> {
     if (this.cachedSnapshot) {
       return this.cachedSnapshot;
     }
@@ -53,9 +53,13 @@ export class PythonProjectIndex implements vscode.Disposable {
     const maxFiles = vscode.workspace
       .getConfiguration("codeCat")
       .get<number>("maxIndexedFiles", 400);
-    const uris = await vscode.workspace.findFiles("**/*.py", EXCLUDE_GLOB, maxFiles + 1);
+    const [primaryUris, allUris] = await Promise.all([
+      vscode.workspace.findFiles("{src,packages,lib,apps}/**/*.{py,ts,tsx,mts,cts,js,jsx,mjs,cjs}", EXCLUDE_GLOB, maxFiles + 1),
+      vscode.workspace.findFiles("**/*.{py,ts,tsx,mts,cts,js,jsx,mjs,cjs}", EXCLUDE_GLOB, maxFiles + 1),
+    ]);
+    const uris = [...new Map([...primaryUris,...allUris].map(uri=>[uri.toString(),uri])).values()];
     const selectedUris = uris.slice(0, maxFiles);
-    const symbols: PythonSymbol[] = [];
+    const symbols: ProjectSymbol[] = [];
     const files: string[] = [];
 
     for (const uri of selectedUris) {
@@ -69,6 +73,10 @@ export class PythonProjectIndex implements vscode.Disposable {
 
       const bytes = await vscode.workspace.fs.readFile(uri);
       const text = new TextDecoder("utf-8").decode(bytes);
+      if (!uri.fsPath.endsWith(".py")) {
+        symbols.push(...await scriptSymbols(uri, relativePath, text));
+        continue;
+      }
       const lines = text.split(/\r?\n/u);
       for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index] ?? "";
@@ -116,34 +124,58 @@ export class PythonProjectIndex implements vscode.Disposable {
       .map((symbol) => `${symbol.file}:${symbol.line} ${symbol.signature}`)
       .join("\n");
 
+    const localPackages: string[] = [];
+    const manifests=await vscode.workspace.findFiles("**/package.json", EXCLUDE_GLOB,200);
+    for(const uri of manifests){
+      try{const manifest=JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8"));
+        if(typeof manifest.name==="string")localPackages.push(`${manifest.name} => ${vscode.workspace.asRelativePath(uri,false)}`);
+      }catch{/* Unavailable manifests do not imply external dependencies. */}
+    }
+    const excerpts: string[] = [];
+    for (const file of [...new Set([...chosen].sort((a,b)=>scoreSymbol(b,terms)-scoreSymbol(a,terms)).map(symbol => symbol.absolutePath))].slice(0, 4)) {
+      const symbol = [...chosen].filter(item => item.absolutePath === file).sort((a,b)=>scoreSymbol(b,terms)-scoreSymbol(a,terms))[0]!;
+      try {
+        const document = await vscode.workspace.openTextDocument(file);
+        const start = Math.max(0, symbol.line - 3);
+        const end = Math.min(document.lineCount, start + 65);
+        const lines: string[] = [];
+        for (let line = start; line < end; line += 1) lines.push(`${line + 1}: ${document.lineAt(line).text}`);
+        excerpts.push(`${symbol.file} (current source excerpt):\n${lines.join("\n").slice(0, 5000)}`);
+      } catch { /* A deleted file remains unavailable evidence, never invented code. */ }
+    }
     return [
-      `Python files (${project.files.length}${project.truncated ? "+" : ""}):`,
+      "Local package identities (may be self-references or workspace imports):",
+      ...localPackages,
+      "Only selected source excerpts are shown. Missing excerpts do not prove absence of implementation.",
+      `Source files (${project.files.length}${project.truncated ? "+" : ""}):`,
       fileList,
       "",
       `Symbols (${project.symbols.length} indexed; ${chosen.length} shown):`,
       symbolList,
+      "Source excerpts (only these lines may be quoted as repository code):",
+      ...excerpts,
     ].join("\n");
   }
 
-  public async readinessIssue(): Promise<PythonProjectReadinessIssue | undefined> {
+  public async readinessIssue(): Promise<ProjectReadinessIssue | undefined> {
     if (!(vscode.workspace.workspaceFolders?.length)) {
       return {
         kind: "no-workspace",
-        message: "请先在 VS Code 中打开一个包含 Python 代码的项目文件夹。",
+        message: "请先在 VS Code 中打开一个包含 Python、TypeScript 或 JavaScript 代码的项目文件夹。",
       };
     }
     const project = await this.snapshot();
     if (project.files.length === 0) {
       return {
-        kind: "no-python-files",
-        message: "当前工作区没有找到 Python 文件。请打开正确的项目，或确认源码未被排除。",
+        kind: "no-source-files",
+        message: "当前工作区没有找到 Python、TypeScript 或 JavaScript 源码。请打开正确的项目，或确认源码未被排除。",
       };
     }
     return undefined;
   }
 
   public async resolveFile(candidate: string): Promise<string | undefined> {
-    const normalizedCandidate = parseWorkspaceRelativePythonPath(candidate);
+    const normalizedCandidate = parseWorkspaceRelativeSourcePath(candidate);
     if (!normalizedCandidate) {
       return undefined;
     }
@@ -185,9 +217,9 @@ export class PythonProjectIndex implements vscode.Disposable {
   }
 }
 
-function parseWorkspaceRelativePythonPath(
+function parseWorkspaceRelativeSourcePath(
   candidate: string,
-): WorkspaceRelativePythonPath | undefined {
+): WorkspaceRelativeSourcePath | undefined {
   const slashPath = candidate.replaceAll("\\", "/").replace(/^\.\//u, "");
   if (
     !slashPath ||
@@ -195,26 +227,26 @@ function parseWorkspaceRelativePythonPath(
     path.posix.isAbsolute(slashPath) ||
     path.win32.isAbsolute(candidate) ||
     slashPath.split("/").includes("..") ||
-    !slashPath.toLowerCase().endsWith(".py")
+    !/\.(?:py|[cm]?[jt]s|[jt]sx)$/iu.test(slashPath)
   ) {
     return undefined;
   }
-  return path.posix.normalize(slashPath) as WorkspaceRelativePythonPath;
+  return path.posix.normalize(slashPath) as WorkspaceRelativeSourcePath;
 }
 
 function tokenizeQuestion(question: string): readonly string[] {
   return [...new Set(question.toLowerCase().match(/[a-z_][a-z0-9_]{2,}/gu) ?? [])];
 }
 
-function scoreSymbol(symbol: PythonSymbol, terms: readonly string[]): number {
+function scoreSymbol(symbol: ProjectSymbol, terms: readonly string[]): number {
   const haystack = `${symbol.file} ${symbol.name} ${symbol.signature}`.toLowerCase();
-  return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+  return terms.reduce((score, term) => score + (symbol.name.toLowerCase() === term ? 100 : haystack.includes(term) ? 1 : 0), 0);
 }
 
 function selectPromptSymbols(
-  symbols: readonly PythonSymbol[],
+  symbols: readonly ProjectSymbol[],
   terms: readonly string[],
-): readonly PythonSymbol[] {
+): readonly ProjectSymbol[] {
   const stableOrder = [...symbols].sort(
     (left, right) =>
       left.file.localeCompare(right.file) ||
@@ -243,6 +275,42 @@ function selectPromptSymbols(
   return [...stablePrefix, ...relevantTail, ...stableFallback].slice(0, MAX_PROMPT_SYMBOLS);
 }
 
-function symbolKey(symbol: PythonSymbol): string {
+function symbolKey(symbol: ProjectSymbol): string {
   return `${symbol.absolutePath}:${symbol.line}:${symbol.name}`;
+}
+
+async function scriptSymbols(uri: vscode.Uri, file: string, text: string): Promise<ProjectSymbol[]> {
+  // The built-in TS language service understands TSX, methods and arrow functions.
+  // Keep a bounded fallback for disabled or unavailable language services.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let provided: (vscode.DocumentSymbol | vscode.SymbolInformation)[] | undefined;
+  try {
+    await vscode.workspace.openTextDocument(uri);
+    provided = await Promise.race([
+      vscode.commands.executeCommand<(vscode.DocumentSymbol | vscode.SymbolInformation)[]>(
+        "vscode.executeDocumentSymbolProvider", uri,
+      ),
+      new Promise<undefined>((resolve) => { timer = setTimeout(() => resolve(undefined), 1500); }),
+    ]);
+  } catch { /* Declaration scanning remains available without a language service. */ }
+  finally { if (timer) clearTimeout(timer); }
+  const lines = text.split(/\r?\n/u);
+  const result: ProjectSymbol[] = [];
+  function visit(items: (vscode.DocumentSymbol | vscode.SymbolInformation)[]): void {
+    for (const item of items) {
+      const range = "selectionRange" in item ? item.selectionRange : item.location.range;
+      result.push({ file, absolutePath: uri.fsPath, line: range.start.line + 1,
+        kind: item.kind === vscode.SymbolKind.Class ? "class" : "function",
+        name: item.name, signature: (lines[range.start.line] ?? item.name).trim().slice(0, 240) });
+      if ("children" in item) visit(item.children);
+    }
+  }
+  if (provided?.length) { visit(provided); return result; }
+  const declaration = /^\s*(?:export\s+(?:default\s+)?)?(?:declare\s+)?(?:async\s+)?(?:function\s*\*?\s*|class\s+|interface\s+|type\s+|(?:const|let|var)\s+)([$\w]+)/u;
+  lines.forEach((line, index) => {
+    const match = declaration.exec(line);
+    if (match?.[1]) result.push({ file, absolutePath: uri.fsPath, line: index + 1,
+      kind: /\bclass\b/u.test(line) ? "class" : "function", name: match[1], signature: line.trim().slice(0, 240) });
+  });
+  return result;
 }

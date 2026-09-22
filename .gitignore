@@ -5,3 +5,5 @@ dist/
 .vscode-test/
 __pycache__/
 *.pyc
+
+plugins/jetbrains/build/

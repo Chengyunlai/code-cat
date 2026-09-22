@@ -1,3 +1,4 @@
+import { NODE_SOURCE, nodeFileConfiguration } from "./debug/nodeLaunchTargets";
 import { randomUUID } from "node:crypto";
 import * as vscode from "vscode";
 import { AiTutor, TutorGuidanceError } from "./ai/aiTutor";
@@ -16,18 +17,18 @@ import {
   selectedPythonInterpreterPath,
 } from "./debug/pythonLaunchTargets";
 import { type ChatMessage, DebugPause, RoutePlan, SourceLocation } from "./domain/model";
-import { PythonProjectIndex } from "./project/pythonProjectIndex";
+import { ProjectIndex } from "./project/projectIndex";
 import { CallStackTree } from "./views/callStackTree";
 import { RuntimeMapActions, RuntimeMapView } from "./views/runtimeMapView";
 import {
-  PYTHON_SOURCE_SELECTOR,
+  SOURCE_SELECTOR,
   SourceGuidanceController,
 } from "./views/sourceGuidance";
 import { TokenUsageStatusBar } from "./views/tokenUsageStatusBar";
 
 export function activate(context: vscode.ExtensionContext): void {
   const store = new SessionStore(context.workspaceState);
-  const projectIndex = new PythonProjectIndex();
+  const projectIndex = new ProjectIndex();
   const usageTracker = new TokenUsageTracker(context.workspaceState);
   const modelProvider = new ModelProviderService(context, usageTracker);
   const tutor = new AiTutor(projectIndex, modelProvider);
@@ -61,6 +62,40 @@ export function activate(context: vscode.ExtensionContext): void {
   let activeQuestion: vscode.CancellationTokenSource | undefined;
   context.subscriptions.push({ dispose: () => { activeQuestion?.cancel(); activeQuestion?.dispose(); } });
   const actions: RuntimeMapActions = {
+    debugFromMessage: async (messageId) => actionCoordinator.run("debug", async () => {
+      const route = store.routeForMessage(messageId);
+      const target = route?.nodes[0]?.location;
+      if (!route || !target) return;
+      try {
+        const uri = vscode.Uri.file(target.path);
+        if (!vscode.workspace.getWorkspaceFolder(uri)) throw new Error("源码不在当前工作区");
+        const document = await vscode.workspace.openTextDocument(uri);
+        if (target.line < 1 || target.line > document.lineCount) throw new Error("原行号已失效");
+      } catch {
+        void vscode.window.showWarningMessage("这条历史回答的源码位置已不可用，请重新定位代码。");
+        return;
+      }
+      if (vscode.debug.activeDebugSession) {
+        await revealLocation(target);
+        if (breakpoints.state(target) === "none") breakpoints.toggle(target);
+        void vscode.window.showInformationMessage("已保留此处断点；继续运行时会尝试命中。源码若有改动，请核对断点位置。");
+        return;
+      }
+      breakpoints.clear();
+      store.restoreReadingRoute(route);
+      ensureCoreTeachingBreakpoint(store, breakpoints);
+      await launchGuidedDebugSession(context.extensionUri, observer);
+    }),
+    openSourceReference: async (reference) => {
+      const match = /^(.+):(\d+)$/u.exec(reference);
+      if (!match?.[1] || !match[2]) return;
+      const file = await projectIndex.resolveFile(match[1]);
+      if (!file) { void vscode.window.showInformationMessage("这处引用无法在当前工作区定位。"); return; }
+      const document = await vscode.workspace.openTextDocument(file);
+      const line = Number(match[2]);
+      if (!Number.isSafeInteger(line) || line < 1 || line > document.lineCount) return;
+      await revealLocation({ path: file, line, column: 1 });
+    },
     askQuestion: async (question) => {
       const pause = store.selectedPause();
       const priorMessages = store.beginQuestion(question);
@@ -91,7 +126,7 @@ export function activate(context: vscode.ExtensionContext): void {
       ),
     explainPause: async (question) => {
       if (!store.selectedPause()) {
-        void vscode.window.showInformationMessage("先启动 Python 调试并命中断点，再解释暂停现场。");
+        void vscode.window.showInformationMessage("先启动 项目调试并命中断点，再解释暂停现场。");
         return;
       }
       await actions.askQuestion(question?.trim() || "解释这次暂停：我已经知道什么、还不能确定什么、下一步怎样验证？");
@@ -129,13 +164,13 @@ export function activate(context: vscode.ExtensionContext): void {
     runtimeMap,
     store.onDidChange(updateDebugEvidenceContext),
     vscode.debug.onDidChangeBreakpoints(updateDebugEvidenceContext),
-    vscode.languages.registerCodeLensProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
-    vscode.languages.registerHoverProvider(PYTHON_SOURCE_SELECTOR, sourceGuidance),
+    vscode.languages.registerCodeLensProvider(SOURCE_SELECTOR, sourceGuidance),
+    vscode.languages.registerHoverProvider(SOURCE_SELECTOR, sourceGuidance),
     vscode.window.registerTreeDataProvider("codeCat.callStack", callStackTree),
     vscode.window.registerWebviewViewProvider("codeCat.runtimeMap", runtimeMap),
     vscode.commands.registerCommand("codeCat.askProject", async (suppliedQuestion?: unknown) => {
       const question = typeof suppliedQuestion === "string" ? suppliedQuestion : await vscode.window.showInputBox({
-        title: "Locate a Python code path",
+        title: "Locate a code path",
         prompt: "What behavior or request flow do you want to understand?",
         placeHolder: "How does an order move from the API to payment?",
         ignoreFocusOut: true,
@@ -247,6 +282,7 @@ export function activate(context: vscode.ExtensionContext): void {
         chatMessages: store.snapshot().chatMessages,
         requestKind: store.snapshot().requestKind,
         retryQuestion: store.snapshot().retryQuestion,
+        streamingAnswer: store.snapshot().streamingAnswer,
         conversationId: store.snapshot().conversationId,
         conversationTitle: store.snapshot().conversationTitle,
         conversationHistoryCount: store.conversationSummaries().length,
@@ -494,9 +530,15 @@ async function answerQuestion(
   token: vscode.CancellationToken,
   pause?: DebugPause,
 ): Promise<void> {
+  let lastEmission = 0;
+  const onText = (text: string): void => {
+    if (token.isCancellationRequested || Date.now() - lastEmission < 70) return;
+    lastEmission = Date.now();
+    store.streamAnswer(text, pause?.id);
+  };
   try {
     if (pause) {
-      const answer = await cancellable(tutor.answerPauseQuestion(question, priorMessages, pause, token), token);
+      const answer = await cancellable(tutor.answerPauseQuestion(question, priorMessages, pause, token, onText), token);
       store.completeQuestionWithAnswer(answer, pause);
       return;
     }
@@ -504,6 +546,7 @@ async function answerQuestion(
       question,
       priorMessages,
       token,
+      onText,
     ), token);
     if (result.kind === "chat") {
       store.completeQuestionWithAnswer(result.answer);
@@ -534,7 +577,7 @@ async function locateRoute(
   breakpoints: ManagedBreakpointService,
   question: string,
 ): Promise<void> {
-  store.setBusy("正在建立 Python 项目索引并定位代码链路…");
+  store.setBusy("正在建立 代码项目索引并定位代码链路…");
   try {
     const route = await vscode.window.withProgress(
       {
@@ -562,7 +605,7 @@ async function startGuidedDebug(
   let question = suppliedQuestion?.trim();
   if (!question && !store.snapshot().route) {
     question = await vscode.window.showInputBox({
-      title: "Start a guided Python debug session",
+      title: "Start a guided debug session",
       prompt: "What code path should this session teach you?",
       ignoreFocusOut: true,
     });
@@ -611,7 +654,7 @@ async function launchGuidedDebugSession(
   const configurations = vscode.workspace
     .getConfiguration("launch", folder.uri)
     .get<readonly vscode.DebugConfiguration[]>("configurations", [])
-    .filter((configuration) => configuration.type === "python" || configuration.type === "debugpy");
+    .filter((configuration) => ["python", "debugpy", "node", "pwa-node"].includes(configuration.type));
   if (configurations.length > 0) {
     const configuration = await chooseDebugConfiguration(configurations);
     if (!configuration) {
@@ -619,7 +662,24 @@ async function launchGuidedDebugSession(
     }
     const started = await startObservedDebugSession(observer, folder, configuration);
     if (!started) {
-      void vscode.window.showErrorMessage("VS Code could not start the selected Python debugger.");
+      void vscode.window.showErrorMessage("VS Code could not start the selected debugger.");
+    }
+    return;
+  }
+
+  const activeFile = vscode.window.activeTextEditor?.document.uri;
+  if (activeFile?.scheme === "file" && NODE_SOURCE.test(activeFile.fsPath)
+      && vscode.workspace.getWorkspaceFolder(activeFile)?.uri.toString() === folder.uri.toString()) {
+    const configuration = nodeFileConfiguration(folder, activeFile.fsPath);
+    if (!configuration) {
+      void vscode.window.showInformationMessage(
+        "此文件需要项目运行配置。请在 launch.json 配置 Node 启动入口和 sourceMaps；普通 TS 文件也可使用项目已安装的 tsx。TSX/JSX 请使用项目构建后的 Node 入口，浏览器调试暂不支持。",
+      );
+      await vscode.commands.executeCommand("workbench.action.debug.configure");
+      return;
+    }
+    if (!await startObservedDebugSession(observer, folder, configuration)) {
+      void vscode.window.showErrorMessage("无法启动 Node 调试，请检查 Node 与项目运行配置。");
     }
     return;
   }
@@ -654,7 +714,7 @@ async function launchGuidedDebugSession(
   const editor = vscode.window.activeTextEditor;
   if (editor?.document.languageId !== "python") {
     void vscode.window.showInformationMessage(
-      "Add a Python launch configuration or open the Python entry file, then start guided debug again.",
+      "请打开 Python / JS 入口文件，或在 launch.json 配置项目的 Python / Node 启动方式。",
     );
     await vscode.commands.executeCommand("workbench.action.debug.configure");
     return;
@@ -693,7 +753,7 @@ async function startObservedDebugSession(
 async function chooseWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) {
-    void vscode.window.showInformationMessage("Open a Python project folder first.");
+    void vscode.window.showInformationMessage("Open a project folder first.");
     return undefined;
   }
   if (folders.length === 1) {
@@ -701,7 +761,7 @@ async function chooseWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefin
   }
   const selection = await vscode.window.showQuickPick(
     folders.map((folder) => ({ label: folder.name, folder })),
-    { title: "Choose the Python workspace to debug", ignoreFocusOut: true },
+    { title: "Choose the workspace to debug", ignoreFocusOut: true },
   );
   return selection?.folder;
 }
@@ -720,7 +780,7 @@ async function chooseDebugConfiguration(
       label: typeof configuration.name === "string" ? configuration.name : "Python configuration",
       configuration,
     })),
-    { title: "Choose a Python debug configuration", ignoreFocusOut: true },
+    { title: "Choose a debug configuration", ignoreFocusOut: true },
   );
   return selection?.configuration;
 }

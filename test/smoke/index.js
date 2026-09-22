@@ -11,7 +11,7 @@ const {
 } = require("../../dist/ai/modelProviderSecurity");
 const { SessionStore } = require("../../dist/core/sessionStore");
 const { normalizeRuntimeVariables } = require("../../dist/debug/runtimeEvidence");
-const { PythonProjectIndex } = require("../../dist/project/pythonProjectIndex");
+const { ProjectIndex } = require("../../dist/project/projectIndex");
 
 const TIMEOUT_MS = 30_000;
 
@@ -53,6 +53,7 @@ async function run() {
     assert.ok(commands.has(command), `${command} should be registered`);
   }
 
+  await require("./streaming").run();
   await testHttpModelClients();
   await testTokenUsageTracking();
   await testRoutePreflight();
@@ -60,6 +61,7 @@ async function run() {
   await testConversationState();
   testQuestionTerminalStates();
   testObservationOwnership();
+  await testHistoricalRoutes();
   await testProviderSpecificSettings();
   testModelProviderSecurity();
   await vscode.commands.executeCommand("codeCat.clearSession");
@@ -905,6 +907,7 @@ async function testPauseConversationCommands() {
   const original = ModelProviderService.prototype.request;
   const prompts = [];
   let finishCancelled;
+  let lateStream;
   try {
     ModelProviderService.prototype.request = async function(prompt) {
       prompts.push(prompt);
@@ -917,11 +920,14 @@ async function testPauseConversationCommands() {
     assert.match(prompts[0], /BEFORE/u);
     await vscode.commands.executeCommand("codeCat.askProject", "那它现在已经执行了吗？");
     assert.match(prompts[1], /已观察到 MAX_TURNS 为 20/u, "follow-up includes prior evidence answer");
-    ModelProviderService.prototype.request = async function() {
+    ModelProviderService.prototype.request = async function(prompt, token, kind, onText) {
+      lateStream = onText;
+      onText('{"message":"正在解释现场');
       return new Promise((resolve) => { finishCancelled = resolve; });
     };
     const pending = vscode.commands.executeCommand("codeCat.askProject", "这个请求需要停止");
     await waitForValue(() => Boolean(finishCancelled), Boolean, "the pending model request");
+    assert.equal((await vscode.commands.executeCommand("codeCat.__smokeState")).streamingAnswer.text, "正在解释现场");
     await vscode.commands.executeCommand("codeCat.cancelQuestion");
     await pending;
     state = await vscode.commands.executeCommand("codeCat.__smokeState");
@@ -930,10 +936,12 @@ async function testPauseConversationCommands() {
     assert.equal(state.pauseCount, 1, "cancelling preserves evidence");
     ModelProviderService.prototype.request = async function() { return '{"message":"后续请求正常完成"}'; };
     await vscode.commands.executeCommand("codeCat.askProject", "重新问一个问题");
+    lateStream('{"message":"不应出现的迟到片段"}');
     finishCancelled('{"message":"不应出现的迟到回答"}');
     await new Promise((resolve) => setImmediate(resolve));
     state = await vscode.commands.executeCommand("codeCat.__smokeState");
     assert.equal(state.chatMessages.at(-1).text, "后续请求正常完成");
+    assert.equal(state.streamingAnswer, undefined);
     assert.equal(state.chatMessages.some((item) => item.text === "不应出现的迟到回答"), false);
     ModelProviderService.prototype.request = async function() { throw new Error("模拟服务失败"); };
     await vscode.commands.executeCommand("codeCat.askProject", "失败后保留这个问题");
@@ -1254,13 +1262,16 @@ async function testRoutePreflight() {
 
     const folder = vscode.workspace.workspaceFolders?.[0];
     assert.ok(folder, "the route-intent test needs the smoke workspace");
-    const stableIndex = new PythonProjectIndex();
+    const stableIndex = new ProjectIndex();
     try {
+      const checkoutContext = await stableIndex.promptContext("checkout");
+      const inventoryContext = await stableIndex.promptContext("inventory");
       assert.equal(
-        await stableIndex.promptContext("checkout"),
-        await stableIndex.promptContext("inventory"),
-        "small-project context must stay byte-for-byte stable across questions",
+        checkoutContext.split("Source excerpts")[0],
+        inventoryContext.split("Source excerpts")[0],
+        "small-project inventory stays stable while excerpts follow the question",
       );
+      assert.notEqual(checkoutContext, inventoryContext, "source excerpt priority must respond to the queried symbol");
     } finally {
       stableIndex.dispose();
     }
@@ -1754,3 +1765,22 @@ function waitForEvent(event, predicate, description, currentValue) {
 }
 
 module.exports = { run };
+
+async function testHistoricalRoutes() {
+  const values = new Map();
+  const memory = {get: key => values.get(key), update: async (key,value) => {values.set(key,value);}};
+  const store = new SessionStore(memory);
+  const route = name => ({question: name, summary: name, nodes:[{id:name,title:name,reason:name,confidence:'high',location:{path:'/project/'+name+'.ts',line:3,column:1}}]});
+  store.beginQuestion('first'); store.completeQuestionWithRoute(route('first'));
+  const firstId = store.snapshot().chatMessages.at(-1).id;
+  store.beginQuestion('second'); store.completeQuestionWithRoute(route('second'));
+  assert.equal(store.routeForMessage(firstId).question,'first');
+  store.restoreReadingRoute(store.routeForMessage(firstId));
+  assert.equal(store.snapshot().chatMessages.length,4,'restoring a route does not duplicate conversation');
+  await store.whenPersisted();
+  store.dispose();
+  const restored = new SessionStore(memory);
+  assert.equal(restored.routeForMessage(firstId).nodes[0].location.path,'/project/first.ts');
+  assert.equal(restored.routeForMessage('unknown'),undefined);
+  restored.dispose();
+}

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { access, mkdir, readdir, symlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -28,7 +29,15 @@ const isolatedExtensions =
   process.env.CODE_CAT_VSCODE_EXTENSIONS_DIR ??
   path.join(root, ".vscode-test", "code-cat-extensions");
 const extensionsDir = await preparePythonExtensions(machineExtensions, isolatedExtensions);
+execFileSync(process.execPath, [path.join(root, "node_modules/typescript/bin/tsc"),
+  path.join(root, "examples/stage-02-node-conversation/user_code/main.ts"),
+  "--outDir", path.join(root, "examples/stage-02-node-conversation/user_code/dist"),
+  "--sourceMap", "--target", "ES2022", "--module", "commonjs", "--skipLibCheck"], { stdio: "inherit" });
 const suites = [
+  {
+    workspace: path.join(root, "examples/stage-02-node-conversation/user_code"),
+    tests: path.join(root, "test/node/index.js"),
+  },
   {
     workspace: path.join(root, "examples/python-order-service"),
     tests: path.join(root, "test/smoke/index.js"),

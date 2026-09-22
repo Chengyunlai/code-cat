@@ -67,9 +67,35 @@ async function run() {
     assert.equal(await page.locator('#locate').isDisabled(), true, 'parallel sends are blocked');
     assert.equal(await page.locator('.observation-evidence').evaluate((el) => el.open), true, 'evidence expansion survives state updates');
     assert.equal(await page.locator('.observation').isVisible(), true, 'waiting does not replace evidence');
+    state = { ...state, streamingAnswer: { text: '## 先看库存判断\n\n打开 [库存判断](src/inventory.ts:24)，观察当前值。\n\n```ts\nconst available = stock >= quantity;\nreturn available;\n```' } };
+    await send();
+    assert.equal(await page.locator('.streaming-answer h3').textContent(), '先看库存判断');
+    assert.ok(await page.locator('.streaming-answer .syntax-keyword').count() > 0);
+    await page.locator('.streaming-answer .source-reference').click();
+    assert.deepEqual(await page.evaluate(() => window.sentMessages.at(-1)), { type: 'openSourceReference', reference: 'src/inventory.ts:24' });
+    await page.locator('.streaming-answer .code-block-header button').click();
+    assert.equal(await page.evaluate(() => window.sentMessages.at(-1).type), 'copyCode');
+    await page.screenshot({path: path.join(output, 'streaming-reading-360.png'), fullPage: true});
+    // JetBrains dark theme regression: inline source links must not inherit action button height or light hover.
+    await page.setViewportSize({ width: 500, height: 690 });
+    await page.evaluate(() => {
+      document.body.dataset.host = 'jetbrains';
+      const colors = {'--vscode-editor-background':'#20242b','--vscode-foreground':'#d5dbe5','--vscode-descriptionForeground':'#a3adbc','--vscode-input-background':'#2b2f36','--vscode-widget-border':'#414854','--vscode-codeCat-accent':'#91b7ff','--vscode-codeCat-observed':'#7cd8b2','--vscode-codeCat-inference':'#c4afff','--vscode-codeCat-uncertainty':'#e7bd77'};
+      for(const [key,value] of Object.entries(colors)) document.documentElement.style.setProperty(key,value);
+    });
+    const sourceLink = page.locator('.streaming-answer .source-reference');
+    await sourceLink.hover();
+    assert.equal(await sourceLink.evaluate(el => getComputedStyle(el).minHeight), '0px');
+    assert.equal(await page.locator('.product-name').isVisible(), false);
+    assert.equal(await page.locator('.composer-shortcut').isVisible(), false);
+    const hoverColor = await sourceLink.evaluate(el => getComputedStyle(el).backgroundColor);
+    assert.notEqual(hoverColor, 'rgb(236, 236, 238)', 'source link never inherits the light action hover');
+    await page.screenshot({path:path.join(output,'jetbrains-reading-dark.png'),fullPage:true});
+    await page.evaluate(() => { delete document.body.dataset.host; document.documentElement.removeAttribute('style'); });
+    await page.setViewportSize({width:360,height:840});
     await page.locator('#cancel-question').click();
     assert.equal(await page.evaluate(() => window.sentMessages.at(-1).type), 'cancelQuestion');
-    state = { ...state, requestKind: undefined, requestPending: false, busyMessage: undefined,
+    state = { ...state, streamingAnswer: undefined, requestKind: undefined, requestPending: false, busyMessage: undefined,
       retryQuestion: '失败的旧问题', tutorMessage: { kind: 'error', text: '模型暂时不可用，请重试。' } };
     await send();
     assert.equal(await page.locator('#question').inputValue(), '那异常会被谁处理？', 'failure never overwrites a newer draft');
@@ -118,6 +144,16 @@ async function run() {
     assert.equal(await page.locator('.observation-location').evaluate((el) => getComputedStyle(el).color), 'rgb(155, 39, 100)', 'theme overrides apply to source links');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('#primary-debug-action button')).backgroundColor === 'rgb(155, 39, 100)');
     assert.equal(await page.locator('#primary-debug-action button').evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(155, 39, 100)', 'the same theme role colors primary actions');
+    state = { ...state, debugStatus: 'ended', debugging: false, chatMessages: [...state.chatMessages,
+      {id: 'historic-route', role: 'assistant', text: '先看库存判断。', debugTarget: {title: '库存判断', fileLabel: 'main.ts', line: 3}}] };
+    await send();
+    assert.equal(await page.locator('.history-debug-actions button').count(), 2, 'history retains source and debugger entry after a pause');
+    await page.screenshot({path: path.join(output, 'history-debug-780.png'), fullPage: true});
+    await page.locator('.history-debug-actions .source-reference').click();
+    assert.deepEqual(await page.evaluate(() => window.sentMessages.at(-1)), {type: 'openMessageSource', messageId: 'historic-route'});
+    await page.locator('.history-debug-actions button').last().click();
+    assert.deepEqual(await page.evaluate(() => window.sentMessages.at(-1)), {type: 'debugFromMessage', messageId: 'historic-route'});
+    await send();
     state = { ...state, debugStatus: 'running', livePauseId: undefined };
     await send();
     assert.equal(await page.locator('[data-debug]').count(), 0, 'historical evidence cannot step the live debugger');

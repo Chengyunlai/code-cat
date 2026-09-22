@@ -1,0 +1,6 @@
+{
+  "name": "@code-cat/engine",
+  "private": true,
+  "version": "0.2.0",
+  "main": "dist/main.js"
+}

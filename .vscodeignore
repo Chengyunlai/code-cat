@@ -9,3 +9,8 @@ test/**
 node_modules/**
 tsconfig.json
 package-lock.json
+
+plugins/**
+packages/*/src/**
+packages/*/tsconfig.json
+packages/engine/**

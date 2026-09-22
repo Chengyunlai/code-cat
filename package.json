@@ -1,8 +1,8 @@
 {
   "name": "code-cat",
   "displayName": "Code Cat",
-  "description": "A debug-driven AI tutor for understanding Python code paths in VS Code.",
-  "version": "0.1.6",
+  "description": "A debug-driven AI tutor for understanding Python, TypeScript and JavaScript in VS Code.",
+  "version": "0.2.3",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -17,10 +17,6 @@
     "vscode": "^1.105.0",
     "node": ">=22"
   },
-  "extensionDependencies": [
-    "ms-python.python",
-    "ms-python.debugpy"
-  ],
   "categories": [
     "Debuggers",
     "Education",
@@ -31,7 +27,10 @@
     "debugger",
     "code-understanding",
     "visualization",
-    "ai-tutor"
+    "ai-tutor",
+    "typescript",
+    "javascript",
+    "node"
   ],
   "activationEvents": [
     "onView:codeCat.runtimeMap",
@@ -207,7 +206,7 @@
           "default": 400,
           "minimum": 20,
           "maximum": 2000,
-          "description": "Maximum number of Python files included in the structural project index."
+          "description": "Maximum number of Python, TypeScript and JavaScript source files included in the structural project index."
         },
         "codeCat.maxStackFrames": {
           "type": "number",
@@ -289,11 +288,14 @@
     ]
   },
   "scripts": {
-    "compile": "tsc -p tsconfig.json",
-    "watch": "tsc -w -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit",
+    "compile": "tsc -p packages/core/tsconfig.json && tsc -p packages/ui/tsconfig.json && tsc -p packages/engine/tsconfig.json && tsc -p tsconfig.json",
+    "watch": "npm run compile && node scripts/watch.mjs",
+    "check": "tsc -p packages/core/tsconfig.json && tsc -p packages/ui/tsconfig.json && tsc -p packages/engine/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "smoke:vscode": "npm run compile && node scripts/run-vscode-smoke.mjs",
-    "package": "npm run compile && vsce package --no-dependencies --allow-missing-repository"
+    "package": "npm run compile && vsce package --no-dependencies --allow-missing-repository",
+    "test:engine": "npm run compile && node examples/stage-04-shared-core/user_code/main.cjs && node test/engine/index.cjs && node test/engine/retrieval.cjs",
+    "build:jetbrains": "npm run compile && python3 scripts/build-jetbrains.py",
+    "smoke:jetbrains": "npm run compile && python3 scripts/run-jetbrains-smoke.py"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

@@ -7,8 +7,8 @@ import {
 } from "../debug/breakpoints";
 import { PauseExplanation, RouteNode, SourceLocation } from "../domain/model";
 
-export const PYTHON_SOURCE_SELECTOR: vscode.DocumentSelector = [
-  { language: "python", scheme: "file" },
+export const SOURCE_SELECTOR: vscode.DocumentSelector = [
+  ...["python", "typescript", "typescriptreact", "javascript", "javascriptreact"].map(language => ({ language, scheme: "file" })),
 ];
 
 interface SourceGuidanceContext {
@@ -115,7 +115,7 @@ export class SourceGuidanceController
   }
 
   private nodesForDocument(document: vscode.TextDocument): readonly RouteNode[] {
-    if (document.languageId !== "python" || document.uri.scheme !== "file") {
+    if (!["python", "typescript", "typescriptreact", "javascript", "javascriptreact"].includes(document.languageId) || document.uri.scheme !== "file") {
       return [];
     }
     const documentPath = normalizePath(document.uri.fsPath);
@@ -226,7 +226,7 @@ export class SourceGuidanceController
     const end = Math.min(document.lineCount - 1, lineIndex + 2);
     const snippet = sourceSnippet(document, start, end, lineIndex);
     markdown.appendMarkdown("\n\n**附近代码**\n\n");
-    markdown.appendCodeblock(snippet, "python");
+    markdown.appendCodeblock(snippet, document.languageId);
     markdown.appendMarkdown("\n将鼠标移到提示上查看上下文；使用上方 CodeLens 精细控制断点和单步操作。");
     return markdown;
   }

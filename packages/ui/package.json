@@ -1,0 +1,6 @@
+{
+  "name": "@code-cat/ui",
+  "private": true,
+  "version": "0.2.0",
+  "main": "dist/runtimeMapHtml.js"
+}

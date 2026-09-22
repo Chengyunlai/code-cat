@@ -1,0 +1,11 @@
+<idea-plugin>
+  <id>dev.codecat</id><name>Code Cat</name><version>0.2.3-preview</version>
+  <vendor>Code Cat</vendor>
+  <description>AI-guided code reading with real debugger pause context. Experimental JetBrains host; requires Node.js 20+.</description>
+  <idea-version since-build="251" until-build="251.*"/>
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.lang</depends>
+  <extensions defaultExtensionNs="com.intellij">
+    <toolWindow id="Code Cat" anchor="right" factoryClass="dev.codecat.CodeCatToolWindow"/>
+  </extensions>
+</idea-plugin>

@@ -52,6 +52,8 @@ export class DebugSessionObserver implements vscode.Disposable {
     this.disposables.push(
       vscode.debug.registerDebugAdapterTrackerFactory("python", factory),
       vscode.debug.registerDebugAdapterTrackerFactory("debugpy", factory),
+      vscode.debug.registerDebugAdapterTrackerFactory("node", factory),
+      vscode.debug.registerDebugAdapterTrackerFactory("pwa-node", factory),
       vscode.debug.onDidTerminateDebugSession((session) => {
         const guidedSessionEnded = this.store.snapshot().debugSessionId === session.id;
         this.captureVersions.delete(session.id);
@@ -91,8 +93,13 @@ export class DebugSessionObserver implements vscode.Disposable {
   }
 
   private observeAdapterMessage(session: vscode.DebugSession, message: unknown): void {
-    if (this.store.snapshot().debugSessionId !== session.id) {
-      return;
+    const observedId = this.store.snapshot().debugSessionId;
+    if (observedId !== session.id) {
+      // js-debug uses a launcher session and a child session for the actual process.
+      let parent = session.parentSession;
+      while (parent && parent.id !== observedId) parent = parent.parentSession;
+      if (!parent || !isStoppedEvent(message)) return;
+      this.store.beginDebugSession(session.id);
     }
 
     if (isContinuedEvent(message)) {

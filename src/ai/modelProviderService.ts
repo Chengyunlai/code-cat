@@ -152,11 +152,12 @@ export class ModelProviderService {
     prompt: string,
     token: vscode.CancellationToken,
     requestKind: ModelRequestKind,
+    onText?: (text: string) => void,
   ): Promise<string> {
     const provider = this.resolveCurrent();
     let response: ModelClientResponse;
     if (provider.definition.id === "vscode") {
-      response = await requestVsCodeModel(prompt, token);
+      response = await requestVsCodeModel(prompt, token, onText);
     } else {
       if (!provider.definition.transport || !provider.baseUrl || !provider.model) {
         throw new Error(
@@ -180,6 +181,7 @@ export class ModelProviderService {
           prompt,
         },
         token,
+        onText,
       );
     }
     await this.usageTracker.record(response.usage, {
@@ -374,6 +376,7 @@ export class ModelProviderService {
 async function requestVsCodeModel(
   prompt: string,
   token: vscode.CancellationToken,
+  onText?: (text: string) => void,
 ): Promise<ModelClientResponse> {
   const models = await vscode.lm.selectChatModels();
   const model = models[0];
@@ -389,7 +392,9 @@ async function requestVsCodeModel(
   );
   let result = "";
   for await (const fragment of response.text) {
+    if (token.isCancellationRequested) throw new vscode.CancellationError();
     result += fragment;
+    onText?.(result);
   }
   const text = result.trim();
   const fallback = estimateTokenUsage(prompt, text);

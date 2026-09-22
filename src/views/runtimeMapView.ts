@@ -9,6 +9,8 @@ import { createRuntimeMapHtml } from "./runtimeMapHtml";
 
 export interface RuntimeMapActions {
   askQuestion(question: string): Promise<void>;
+  openSourceReference(reference: string): Promise<void>;
+  debugFromMessage(messageId: string): Promise<void>;
   cancelQuestion(): void;
   startGuidedDebug(question?: string): Promise<void>;
   explainPause(question?: string): Promise<void>;
@@ -27,6 +29,9 @@ interface WebviewMessage {
   readonly type?: unknown;
   readonly error?: unknown;
   readonly question?: unknown;
+  readonly reference?: unknown;
+  readonly messageId?: unknown;
+  readonly code?: unknown;
   readonly nodeId?: unknown;
   readonly pauseId?: unknown;
   readonly frameId?: unknown;
@@ -381,10 +386,18 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           state.debugStatus === "paused" && !state.captureError ? state.pauses.at(-1)?.id : undefined,
         requestPending: Boolean(state.requestKind || state.busyMessage),
         requestKind: state.requestKind,
+        streamingAnswer: state.streamingAnswer,
         modelProvider: this.actions.modelProviderStatus(),
         debugging: Boolean(state.debugSessionId),
         workspaceOpen: Boolean(vscode.workspace.workspaceFolders?.length),
-        chatMessages: state.chatMessages,
+        chatMessages: state.chatMessages.map(message => {
+          const savedRoute = this.store.routeForMessage(message.id);
+          const node = savedRoute?.nodes[0];
+          return { ...message, debugTarget: node ? {
+            title: node.title, fileLabel: vscode.workspace.asRelativePath(node.location.path, false),
+            line: node.location.line,
+          } : undefined };
+        }),
         contentMode: state.contentMode,
         conversationId: state.conversationId,
         conversationTitle: state.conversationTitle,
@@ -433,6 +446,14 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       case "cancelQuestion":
         this.actions.cancelQuestion();
         return;
+      case "openMessageSource": {
+        const route = typeof value.messageId === "string" ? this.store.routeForMessage(value.messageId) : undefined;
+        if (route?.nodes[0]) await this.actions.revealLocation(route.nodes[0].location);
+        return;
+      }
+      case "debugFromMessage":
+        if (typeof value.messageId === "string") await this.actions.debugFromMessage(value.messageId);
+        return;
       case "startDebug":
         await this.actions.startGuidedDebug(
           typeof value.question === "string" ? value.question.trim() : undefined,
@@ -452,6 +473,12 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         return;
       case "revealNextRouteNode":
         this.store.revealNextRouteNode();
+        return;
+      case "copyCode":
+        if (typeof value.code === "string" && value.code.length <= 20000) await vscode.env.clipboard.writeText(value.code);
+        return;
+      case "openSourceReference":
+        if (typeof value.reference === "string") await this.actions.openSourceReference(value.reference);
         return;
       case "openFolder":
         await vscode.commands.executeCommand("vscode.openFolder");
