@@ -1,10 +1,18 @@
-<idea-plugin>
+<idea-plugin url="https://github.com/Chengyunlai/code-cat">
   <id>dev.codecat</id><name>Code Cat</name><version>0.2.3-preview</version>
-  <vendor>Code Cat</vendor>
-  <description>AI-guided code reading with real debugger pause context. Experimental JetBrains host; requires Node.js 20+.</description>
+  <vendor url="https://github.com/Chengyunlai/code-cat">Code Cat contributors</vendor>
+  <description><![CDATA[
+    <p>Explore TypeScript, JavaScript, and Python projects through an AI conversation connected to source code and real debugger pauses.</p>
+    <p>Ask a question, follow a source location, then choose when to start debugging. Code Cat keeps observations and follow-up questions in one conversation. It distinguishes captured pause evidence from source-based inference.</p>
+    <p>This is an experimental preview tested with WebStorm 2025.1.3. The JetBrains host currently captures the paused location and nearby source, but not debugger variables or a complete call stack. Node.js 20+ and your own supported model API key are required. Model requests can include excerpts of project source code. See the <a href="https://github.com/Chengyunlai/code-cat/blob/main/plugins/jetbrains/PRIVACY.md">privacy notice</a> and <a href="https://github.com/Chengyunlai/code-cat/blob/main/plugins/jetbrains/README.md">setup guide</a>.</p>
+  ]]></description>
+  <change-notes><![CDATA[
+    <p>First JetBrains preview: shared code-reading conversation, source navigation, streaming answers, and guided debugger pauses. Debug launch now checks the chosen entry against the breakpoint target.</p>
+  ]]></change-notes>
   <idea-version since-build="251" until-build="251.*"/>
   <depends>com.intellij.modules.platform</depends>
   <depends>com.intellij.modules.lang</depends>
+  <depends>NodeJS</depends>
   <extensions defaultExtensionNs="com.intellij">
     <toolWindow id="Code Cat" anchor="right" factoryClass="dev.codecat.CodeCatToolWindow"/>
   </extensions>

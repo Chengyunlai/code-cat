@@ -70,3 +70,9 @@ JetBrains 预览版使用顶层暂停位置与源码，未实现变量、完整�
 ## 0.2.3 远程同步记录
 
 用户已授权提交并同步到 origin/main。实现提交：`7507e80b6d02eb62d385ad238ced41c1167973ad`，标题：`feat(ide): 共享代码阅读核心并接入 JetBrains 调试预览版`。本次记录覆盖 Stage 02–04 与 0.2.1–0.2.3 修复；前文“未提交/未推送”描述的是当时验证状态。提交前再次执行 npm run check 与 git diff --check，通过。安装包、依赖和测试沙箱为构建产物，不纳入 Git；构建与复现入口已随源码同步。
+
+## Marketplace 免费预览版准备（2026-09-23）
+
+用户授权免费发布。发布前补充 English listing、change notes、40px SVG 图标、MIT 许可随包分发、隐私说明和 Marketplace 提交工作表。声明 NodeJS 为必需依赖，继续把兼容范围限制到 251.*；不能把 WebStorm 一台机器的验证外推到其它产品。真正提交、平台审核和安装页出现是独立状态，后续据实际结果记录。
+
+发布包验证：`npm run check` 通过；`npm run smoke:jetbrains` 首次在 JCEF 页面探针处超时，但已记录真实 TS 暂停，再次运行完整通过并保存 JCEF 页面文字；发布包检查确认包含 LICENSE、图标且不含 SmokeStartup。JetBrains Plugin Verifier 1.410 对本机 WebStorm WS-251.26927.40 判定 Compatible，报告仅有两处 deprecated `Messages.showChooseDialog` 用法，没有兼容性错误。构建 ZIP 位于 `plugins/jetbrains/build/`，为忽略的本地产物。

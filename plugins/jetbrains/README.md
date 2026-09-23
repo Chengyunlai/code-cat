@@ -1,5 +1,7 @@
 # Code Cat · JetBrains 预览版
 
+> 免费预览版的 Marketplace 发布准备说明见 [MARKETPLACE.md](MARKETPLACE.md)；隐私与模型请求范围见 [PRIVACY.md](PRIVACY.md)。Marketplace 审核通过前，请继续使用下文的本地安装方法。
+
 一个共享核心，两种 IDE 宿主：JetBrains 负责文件跳转、断点、真实暂停和密码库；本地 Node 进程负责 AI 协议、会话和教学提示。两端使用相同的聊天界面。
 
 ## 安装与使用

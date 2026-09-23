@@ -8,6 +8,8 @@ Code Cat 是一个面向 Python、TypeScript 和 JavaScript 项目的 AI 代码�
 
 ## 0.2.0：共享核心与 JetBrains 预览版
 
+JetBrains 端正准备作为免费插件提交 Marketplace。当前是否已上架请以 [Marketplace 页面](https://plugins.jetbrains.com/) 的实时信息为准；本地安装和预览限制见 [JetBrains 指南](plugins/jetbrains/README.md)。
+
 两端复用同一个会话核心和聊天界面。WebStorm 2025.1 已验证 TS 真断点、源码观察及实际 JCEF 页面呈现；JetBrains 的变量与完整调用栈仍待接入。安装见 [JetBrains 指南](plugins/jetbrains/README.md)。
 
 ## 0.1.9：历史回答保留断点入口

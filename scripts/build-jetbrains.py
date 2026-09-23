@@ -14,11 +14,12 @@ subprocess.run([str(java),'-encoding','UTF-8','--release','21','-cp',classpath,'
 shutil.copytree(root/'plugins/jetbrains/src/main/resources',classes,dirs_exist_ok=True)
 if smoke:
  descriptor=classes/'META-INF/plugin.xml'
- text=descriptor.read_text().replace('<depends>com.intellij.modules.lang</depends>','<depends>com.intellij.modules.lang</depends><depends>NodeJS</depends>').replace('<toolWindow ', '<postStartupActivity implementation="dev.codecat.SmokeStartup"/><toolWindow ')
+ text=descriptor.read_text().replace('<toolWindow ', '<postStartupActivity implementation="dev.codecat.SmokeStartup"/><toolWindow ')
  descriptor.write_text(text)
 html=subprocess.check_output(['node','-e',"let h=require('./packages/ui/dist/runtimeMapHtml').createRuntimeMapHtml({cspSource: ''});process.stdout.write(h.replace(/(<script nonce=\"[^\"]+\">)/,'$1/* CODECAT_HOST_BRIDGE */'));"],cwd=root)
 (classes/'codecat.html').write_bytes(html)
 plugin=build/'code-cat';(plugin/'lib').mkdir(parents=True)
+shutil.copy2(root/'LICENSE',plugin/'LICENSE')
 with zipfile.ZipFile(plugin/'lib/code-cat.jar','w',zipfile.ZIP_DEFLATED) as jar:
  for p in classes.rglob('*'):
   if p.is_file():jar.write(p,p.relative_to(classes))

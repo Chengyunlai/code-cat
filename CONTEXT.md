@@ -60,6 +60,8 @@ Route answers persist their RoutePlan on the assistant message. Historical debug
 
 ## Stage 04 · 共享核心 / JetBrains
 
+Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.md，隐私说明位于 plugins/jetbrains/PRIVACY.md；实际提交和审核状态须另行记录，不能把本地包构建当作已上架。构建包包含 MIT LICENSE 与 40px SVG 图标，插件仅声明 251.* 且依赖 NodeJS。详见 docs/implementation/stage-04.md 的发布准备记录。
+
 当前基线仍为 main/6babced，先前 0.1.7–0.1.9 改动保留在未提交工作树。本轮版本 0.2.0，未提交或推送。
 
 核心迁入 packages/core，无 vscode 导入；src 原路径保留兼容转发。共享 UI 在 packages/ui；JetBrains 经 packages/engine 的私有 stdio 通信。plugins/jetbrains 使用平台调试、源码导航、PasswordSafe 和 JCEF。WebStorm SDK 251 已构建并真实命中 TS source-map 断点，共享引擎已保存观察消息。预览版尚无变量、完整调用栈和跨 IDE 历史同步，不宣称整个 JetBrains 产品线已验证。
