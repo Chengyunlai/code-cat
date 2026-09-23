@@ -60,7 +60,7 @@ Route answers persist their RoutePlan on the assistant message. Historical debug
 
 ## Stage 04 · 共享核心 / JetBrains
 
-Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.md，隐私说明位于 plugins/jetbrains/PRIVACY.md；实际提交和审核状态须另行记录，不能把本地包构建当作已上架。构建包包含 MIT LICENSE 与 40px SVG 图标，插件仅声明 251.* 且依赖 NodeJS。详见 docs/implementation/stage-04.md 的发布准备记录。
+Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.md，隐私说明位于 plugins/jetbrains/PRIVACY.md。0.2.3-preview 已提交审核，插件页为 https://plugins.jetbrains.com/plugin/34438-code-cat；当前尚未公开，不能表述为已上架。构建包包含 MIT LICENSE 与 40px SVG 图标，插件仅声明 251.* 且依赖 NodeJS。详见 docs/implementation/stage-04.md。
 
 当前基线仍为 main/6babced，先前 0.1.7–0.1.9 改动保留在未提交工作树。本轮版本 0.2.0，未提交或推送。
 

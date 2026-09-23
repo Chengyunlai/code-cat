@@ -12,6 +12,8 @@ location to a real breakpoint and updates the reading path from the actual call 
 
 ## 0.2.0: shared core and JetBrains preview
 
+The free JetBrains preview has been [submitted to Marketplace for review](https://plugins.jetbrains.com/plugin/34438-code-cat) and is not public yet. Until approval, follow the [local installation guide](plugins/jetbrains/README.md); check the Marketplace page for current availability.
+
 Both hosts reuse the conversation core and UI. WebStorm 2025.1 has been tested with a real TS breakpoint and JCEF evidence rendering. JetBrains variable capture and full stacks remain unsupported. See the [installation guide](plugins/jetbrains/README.md).
 
 ## 0.1.9: reusable debugger entry points in history

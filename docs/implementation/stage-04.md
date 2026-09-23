@@ -76,3 +76,7 @@ JetBrains 预览版使用顶层暂停位置与源码，未实现变量、完整�
 用户授权免费发布。发布前补充 English listing、change notes、40px SVG 图标、MIT 许可随包分发、隐私说明和 Marketplace 提交工作表。声明 NodeJS 为必需依赖，继续把兼容范围限制到 251.*；不能把 WebStorm 一台机器的验证外推到其它产品。真正提交、平台审核和安装页出现是独立状态，后续据实际结果记录。
 
 发布包验证：`npm run check` 通过；`npm run smoke:jetbrains` 首次在 JCEF 页面探针处超时，但已记录真实 TS 暂停，再次运行完整通过并保存 JCEF 页面文字；发布包检查确认包含 LICENSE、图标且不含 SmokeStartup。JetBrains Plugin Verifier 1.410 对本机 WebStorm WS-251.26927.40 判定 Compatible，报告仅有两处 deprecated `Messages.showChooseDialog` 用法，没有兼容性错误。构建 ZIP 位于 `plugins/jetbrains/build/`，为忽略的本地产物。
+
+## Marketplace 提交状态（2026-09-23）
+
+用户自行接受 Marketplace Developer Agreement 3.2，并确认以个人 Non-trader、联系邮箱不公开的方式免费发布。发布者 `Chengyunlai` 已创建。已上传 `code-cat-jetbrains-0.2.3-preview.zip`，选择 MIT、公开源码链接、AI / Debugging / JavaScript 标签、Stable 渠道，不包含广告且不隐藏。Marketplace 返回上传成功，插件 ID `34438`，页面为 https://plugins.jetbrains.com/plugin/34438-code-cat；管理页显示已送审核，插件卡片显示 Free。平台提示审核前页面不公开，预计在接下来的两个工作日完成最终检查；是否公开以平台实际状态为准。
