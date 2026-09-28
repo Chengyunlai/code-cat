@@ -78,6 +78,14 @@ async function preparePythonExtensions(sourceDir, targetDir) {
     const source = path.join(sourceDir, extension.name);
     const target = path.join(targetDir, extension.name);
     try {
+      // 已存在就直接复用。沙箱的文件系统代理在 symlink 冲突时抛出的错误对象不带
+      // EEXIST 码，只靠捕获异常识别不了，先探测一次更可靠。
+      await access(target);
+      continue;
+    } catch {
+      /* 目标不存在，继续创建链接。 */
+    }
+    try {
       await symlink(source, target, process.platform === "win32" ? "junction" : "dir");
     } catch (error) {
       if (error?.code !== "EEXIST") {

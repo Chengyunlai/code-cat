@@ -14,3 +14,8 @@ plugins/**
 packages/*/src/**
 packages/*/tsconfig.json
 packages/engine/**
+
+verification-*/
+*.vsix
+.vscode-test/**
+.workbuddy-ai/**

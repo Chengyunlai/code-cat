@@ -7,3 +7,12 @@ __pycache__/
 *.pyc
 
 plugins/jetbrains/build/
+
+# 工作区记忆与本地状态，不随仓库分发
+.workbuddy-ai/
+
+# JetBrains 验证产物目录（含空格，按前缀匹配）
+verification-*/
+
+# 冒烟运行在示例项目里生成的空调试配置
+examples/**/user_code/.vscode/
