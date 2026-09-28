@@ -1,18 +1,18 @@
 {
   "name": "code-cat",
   "displayName": "Code Cat",
-  "description": "A debug-driven AI tutor for understanding Python, TypeScript and JavaScript in VS Code.",
+  "description": "A debug-driven AI code-reading tutor for Python, TypeScript and JavaScript projects in VS Code.",
   "version": "0.2.8",
   "publisher": "local",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chengyunlai/code-cat.git"
+    "url": "https://github.com/Chengyunlai/code-cat.git"
   },
   "bugs": {
-    "url": "https://github.com/chengyunlai/code-cat/issues"
+    "url": "https://github.com/Chengyunlai/code-cat/issues"
   },
-  "homepage": "https://github.com/chengyunlai/code-cat#readme",
+  "homepage": "https://github.com/Chengyunlai/code-cat#readme",
   "engines": {
     "vscode": "^1.105.0",
     "node": ">=22"

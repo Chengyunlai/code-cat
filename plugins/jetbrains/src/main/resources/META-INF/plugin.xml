@@ -2,12 +2,20 @@
   <id>dev.codecat</id><name>Code Cat</name><version>0.2.11-preview</version>
   <vendor url="https://github.com/Chengyunlai/code-cat">Code Cat contributors</vendor>
   <description><![CDATA[
-    <p>Explore TypeScript, JavaScript, and Python projects through an AI conversation connected to source code and real debugger pauses.</p>
-    <p>Ask a question, follow a source location, then choose when to start debugging. Code Cat keeps observations and follow-up questions in one conversation. It distinguishes captured pause evidence from source-based inference.</p>
-    <p>This experimental preview has been tested with WebStorm 2025.1.3 for TypeScript breakpoints. The separate PyCharm 2026.1 local build loads without the NodeJS IDE plugin; Python breakpoints are not yet verified. The JetBrains host currently captures the paused location and nearby source, but not debugger variables or a complete call stack. Node.js 20+ is required for Code Cat's local engine and is detected automatically; your own supported model API key is also required. Model requests can include excerpts of project source code. See the <a href="https://github.com/Chengyunlai/code-cat/blob/main/plugins/jetbrains/PRIVACY.md">privacy notice</a> and <a href="https://github.com/Chengyunlai/code-cat/blob/main/plugins/jetbrains/README.md">setup guide</a>.</p>
+    <p>Explore Python, TypeScript, and JavaScript projects through an AI conversation connected to source code and real debugger pauses.</p>
+    <p>Ask a question, follow a source location, then choose when to start debugging. Code Cat keeps observations and follow-up questions in one conversation, separates captured pause evidence from source-based inference, and accumulates the reading path around a single exploration goal instead of rebuilding it on every question.</p>
+    <p>This free preview has been tested with WebStorm 2025.1.3 for TypeScript breakpoints and with PyCharm 2026.1 for plugin loading and JCEF host creation; Python breakpoints are not yet verified. The JetBrains host currently captures the paused location and nearby source, but not debugger variables or a complete call stack. Node.js 20+ is required for Code Cat's local engine and is detected automatically; your own supported model API key is also required. Model requests can include excerpts of project source code. See the <a href="https://github.com/Chengyunlai/code-cat/blob/main/plugins/jetbrains/PRIVACY.md">privacy notice</a> and <a href="https://github.com/Chengyunlai/code-cat/blob/main/plugins/jetbrains/README.md">setup guide</a>.</p>
   ]]></description>
   <change-notes><![CDATA[
-    <p>Code questions now start with purpose and responsibility before following a source path. The pause view separates source clues from observed facts, shows capture limits, and offers editable follow-up questions. Debug launch checks the chosen entry against the breakpoint target.</p>
+    <p>Since the published 0.2.3-preview:</p>
+    <ul>
+      <li>Reading path stops now carry <b>responsibility</b> and <b>relation</b> alongside the reason a line was chosen, and a related code-organization diagram groups the located files by directory.</li>
+      <li>Questions written in Chinese now retrieve relevant source: the Chinese intent is expanded into candidate code identifiers and validated against real symbols.</li>
+      <li>Follow-up questions accumulate on one reading path. Only newly added stops are appended, and switching to a new exploration goal needs your confirmation.</li>
+      <li>Model requests now always settle. A provider that returns response headers without a body no longer leaves the panel stuck on "thinking", and asking again while an answer is in progress shows a notice instead of being silently dropped.</li>
+      <li>Node.js is detected automatically, and the plugin no longer requires the NodeJS IDE plugin, so it can load in free PyCharm. A PyCharm 2026.1 (261) build is included.</li>
+      <li>Debug launch entries are matched against the requested breakpoint target, and a session that ends without a pause reports a diagnostic instead of failing silently.</li>
+    </ul>
   ]]></change-notes>
   <idea-version since-build="251" until-build="251.*"/>
   <depends>com.intellij.modules.platform</depends>
