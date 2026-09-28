@@ -317,6 +317,11 @@ async function run() {
       );
     }
     assert.match(
+      progressiveOverview.runtimeMap.renderedArchitectureRoleText,
+      /把结账请求翻译成一次库存边界调用/u,
+      "the code organization map must state the module responsibility instead of only its title",
+    );
+    assert.match(
       progressiveOverview.runtimeMap.renderedDebugInvitationText,
       /想通过断点看看这个过程吗[\s\S]*用断点跟一遍/u,
       "guided debugging must be presented as a separate optional next step",

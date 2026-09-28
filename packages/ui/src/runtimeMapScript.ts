@@ -28,6 +28,7 @@ export const runtimeMapScript = String.raw`
       primaryDebugAction: document.getElementById('primary-debug-action'),
     };
     const openEvidence = new Set();
+    const expandedArchitecture = new Set();
     let restoredRetry;
     let activeTab = 'overview';
     let requestPending = false;
@@ -35,6 +36,7 @@ export const runtimeMapScript = String.raw`
     let renderedConversationId;
     let currentState = {
       route: undefined,
+      organizationFiles: [],
       pauses: [],
       frames: [],
       variables: [],
@@ -169,6 +171,8 @@ export const runtimeMapScript = String.raw`
             coreLocationCount: elements.content.querySelectorAll('.core-location').length,
             coreLocationText:
               elements.content.querySelector('.core-location')?.textContent || '',
+            architectureRoleText:
+              elements.content.querySelector('.architecture-file-role')?.textContent || '',
             debugInvitationCount:
               elements.content.querySelectorAll('.debug-invitation').length,
             debugInvitationText:
@@ -537,7 +541,7 @@ export const runtimeMapScript = String.raw`
         renderTutorMessage(root, state);
       }
       if (state.captureError) root.appendChild(emptyNotice(state.captureError));
-      if (state.route && !(state.pauses || []).length) {
+      if (state.route && (!(state.pauses || []).length || !state.debugging)) {
         renderExplorationContext(root, state);
       }
     }
@@ -614,8 +618,93 @@ export const runtimeMapScript = String.raw`
           turn.appendChild(controls);
         }
         conversation.appendChild(turn);
+        if (message.role === 'assistant' && message.route &&
+          message.route.nodes?.[0]?.id === state.organizationFiles?.[0]?.id) {
+          renderArchitectureMap(conversation, state);
+        }
       });
       root.appendChild(conversation);
+    }
+
+    function renderArchitectureMap(root, state) {
+      const files = state.organizationFiles || [];
+      if (!files.length) return;
+      const groups = new Map();
+      for (const item of files) {
+        const parts = String(item.fileLabel || '').replaceAll('\\', '/').split('/').filter(Boolean);
+        if (!parts.length) continue;
+        const directory = parts.length > 1 ? parts.slice(0, -1).join('/') : '项目根目录';
+        const label = parts.at(-1);
+        const entries = groups.get(directory) || [];
+        if (!entries.some((entry) => entry.fileLabel === item.fileLabel)) {
+          entries.push({ ...item, label });
+          groups.set(directory, entries);
+        }
+      }
+      if (!groups.size) return;
+      const section = document.createElement('section');
+      section.className = 'architecture-map';
+      section.setAttribute('aria-label', '当前问题相关的代码组织');
+      const heading = document.createElement('div');
+      heading.className = 'architecture-heading';
+      const title = document.createElement('strong');
+      title.textContent = '这部分代码在哪里';
+      const detail = document.createElement('p');
+      detail.textContent = '只显示本问题已定位的文件；连线表示目录归属。文件下方是阅读线索，不表示调用或执行。';
+      heading.append(title, detail);
+      const tree = document.createElement('div');
+      tree.className = 'architecture-tree';
+      const origin = document.createElement('div');
+      origin.className = 'architecture-origin';
+      origin.textContent = '当前问题';
+      tree.appendChild(origin);
+      const branches = document.createElement('div');
+      branches.className = 'architecture-branches';
+      const allGroups = Array.from(groups);
+      const expansionKey = state.conversationId || 'current';
+      const expanded = expandedArchitecture.has(expansionKey);
+      for (const [directory, entries] of (expanded ? allGroups : allGroups.slice(0, 4))) {
+        const group = document.createElement('div');
+        group.className = 'architecture-group';
+        const groupLabel = document.createElement('div');
+        groupLabel.className = 'architecture-directory';
+        groupLabel.textContent = directory;
+        group.appendChild(groupLabel);
+        for (const entry of (expanded ? entries : entries.slice(0, 2))) {
+          const file = actionButton(entry.label, 'architecture-file', () => {
+            vscode.postMessage({ type: 'selectRouteNode', nodeId: entry.id });
+          });
+          file.title = '打开 ' + entry.fileLabel;
+          // 优先显示职责：这张图回答「这段代码为什么存在」，职责比短标题更接近答案。
+          // 旧路径没有 role 时回退到 title，图不会因此变空。
+          const roleText = entry.role || entry.title;
+          if (roleText) {
+            const role = document.createElement('span');
+            role.className = 'architecture-file-role';
+            role.textContent = roleText;
+            file.appendChild(role);
+          }
+          group.appendChild(file);
+        }
+        if (!expanded && entries.length > 2) {
+          const more = document.createElement('span');
+          more.className = 'architecture-more';
+          more.textContent = '还有 ' + (entries.length - 2) + ' 个文件';
+          group.appendChild(more);
+        }
+        branches.appendChild(group);
+      }
+      tree.appendChild(branches);
+      section.append(heading, tree);
+      if (allGroups.length > 4 || allGroups.some(([, entries]) => entries.length > 2)) {
+        const toggle = actionButton(expanded ? '收起' : '展开全部相关文件', 'architecture-toggle', () => {
+          if (expanded) expandedArchitecture.delete(expansionKey);
+          else expandedArchitecture.add(expansionKey);
+          render(currentState);
+        });
+        section.appendChild(toggle);
+      }
+      root.appendChild(section);
     }
 
     function renderObservation(root, message, state) {
@@ -648,12 +737,31 @@ export const runtimeMapScript = String.raw`
         root.appendChild(observation);
         return;
       }
+      const routeStep = state.route?.nodes?.find((node) =>
+        frame?.location && node.location?.path === frame.location.path && node.location.line === frame.location.line);
+      if (routeStep) {
+        const context = document.createElement('div');
+        context.className = 'observation-context';
+        const contextLabel = document.createElement('span');
+        contextLabel.className = 'observation-context-label';
+        contextLabel.textContent = '在整条链路中 · 源码线索';
+        const contextText = document.createElement('p');
+        contextText.textContent = routeStep.title + '：' + routeStep.reason;
+        context.append(contextLabel, contextText);
+        observation.appendChild(context);
+      }
       const hint = document.createElement('p');
       hint.className = 'observation-hint';
       hint.textContent = pause.reason === 'exception'
-        ? '程序因异常暂停。这里记录的是异常发生时的现场。'
-        : '暂停在这行，通常尚未执行。';
+        ? '真实观察 · 程序因异常暂停；这里记录的是异常发生时的现场。'
+        : '真实观察 · 程序已来到这里，高亮行通常还没有执行。';
       observation.appendChild(hint);
+      if (!pause.variables.length) {
+        const limit = document.createElement('p');
+        limit.className = 'observation-limit';
+        limit.textContent = '这次只知道暂停位置与附近源码；没有采集到变量值，不能判断实际入参或执行结果。';
+        observation.appendChild(limit);
+      }
       const currentStatement = pause.source?.split('\n').find((line) => line.startsWith('>'));
       if (currentStatement) {
         const statement = document.createElement('pre');
@@ -705,6 +813,28 @@ export const runtimeMapScript = String.raw`
         if (details.open) openEvidence.add(pause.id); else openEvidence.delete(pause.id);
       });
       observation.appendChild(details);
+      const questions = document.createElement('div');
+      questions.className = 'observation-questions';
+      const questionsLabel = document.createElement('span');
+      questionsLabel.textContent = '沿这个现场继续理解';
+      questions.appendChild(questionsLabel);
+      const suggestions = [
+        ['先看作用', '这里在整条代码链路中负责什么？为什么需要它？'],
+        ['再看机制', '这行接下来会调用或改变什么？请结合源码说明，区分已观察和推断。'],
+        ['验证下一步', '从当前暂停出发，下一步应该观察什么？它能证实哪一个判断？'],
+      ];
+      for (const [label, question] of suggestions) {
+        const suggestion = actionButton(label, 'observation-suggestion', () => {
+          vscode.postMessage({ type: 'selectPause', pauseId: pause.id });
+          elements.question.value = question;
+          resizeQuestion();
+          updateSendAvailability();
+          elements.question.focus();
+        });
+        suggestion.title = question;
+        questions.appendChild(suggestion);
+      }
+      observation.appendChild(questions);
       const explain = actionButton('解释一下', 'quiet', () => {
         if (requestPending) return;
         vscode.postMessage({ type: 'selectPause', pauseId: pause.id });
@@ -839,7 +969,7 @@ export const runtimeMapScript = String.raw`
         debugInvitation.classList.add('active');
         debugTitle.textContent = '断点验证进行中';
         debugDetail.textContent =
-          '路径图会标记真实执行位置；命中断点后，调用栈和变量会同步更新。';
+          '路径图会标记真实执行位置；命中断点后，调用栈和变量会同步更新。要为别的问题重新放置断点，请先停止当前调试。';
         debugActions.appendChild(actionButton('查看运行时信息', 'quiet', () => {
           switchTab((state.frames || []).length ? 'stack' : 'path');
         }));
@@ -847,10 +977,12 @@ export const runtimeMapScript = String.raw`
         debugInvitation.classList.add('active');
         if ((state.pauses || []).length) {
           debugTitle.textContent = '断点验证已结束';
-          debugDetail.textContent = '已保留本次运行采集的路径、调用栈和变量信息。';
+          debugDetail.textContent =
+            '已保留本次运行采集的路径、调用栈和变量信息；换一个代码问题时，可以重新放置断点。';
           debugActions.appendChild(actionButton('查看运行时信息', 'quiet', () => {
             switchTab((state.frames || []).length ? 'stack' : 'path');
           }));
+          debugActions.appendChild(startGuidedDebugAction('用断点跟一遍'));
         } else {
           debugTitle.textContent = '断点没有命中';
           debugDetail.textContent =
@@ -1114,7 +1246,22 @@ export const runtimeMapScript = String.raw`
       const reason = document.createElement('span');
       reason.className = 'path-reason';
       reason.textContent = node.reason;
-      open.append(kicker, title, file, reason);
+      open.append(kicker, title, file);
+      // 职责与关系回答「为什么这样组织」；reason 回答「为什么停在这一行」。两者刻意分行，
+      // 避免把设计意图和选行依据混成一段。旧路径没有这两个字段时不占位。
+      if (node.role) {
+        const role = document.createElement('span');
+        role.className = 'path-role';
+        role.textContent = '职责：' + node.role;
+        open.appendChild(role);
+      }
+      if (node.relation) {
+        const relation = document.createElement('span');
+        relation.className = 'path-relation';
+        relation.textContent = '↳ ' + node.relation;
+        open.appendChild(relation);
+      }
+      open.appendChild(reason);
       open.addEventListener('click', () => vscode.postMessage({ type: 'selectRouteNode', nodeId: node.id }));
       const breakpoint = document.createElement('button');
       breakpoint.type = 'button';

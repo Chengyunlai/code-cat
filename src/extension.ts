@@ -437,6 +437,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 symbol: "checkout",
                 location,
                 reason: "这里把请求中的商品和数量交给库存边界，是结账能否继续的关键证据。",
+                role: "把结账请求翻译成一次库存边界调用",
                 confidence: "high",
               },
               {
@@ -445,6 +446,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 symbol: "checkout",
                 location: { ...location, line: location.line + 1 },
                 reason: "只有用户选择继续探索后，才揭示库存结果如何影响后续结账流程。",
+                relation: "承接上一步的库存结论，决定结账是否继续",
                 confidence: "medium",
               },
             ],

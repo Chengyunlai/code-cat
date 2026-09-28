@@ -35,6 +35,10 @@ export interface RouteNode {
   readonly symbol?: string;
   readonly location: SourceLocation;
   readonly reason: string;
+  /** 该文件或模块在本项目里承担的职责：它为什么存在。可选，缺失时界面不显示职责行。 */
+  readonly role?: string;
+  /** 与上一个阅读节点的关系：调用方向、数据来源或跨越的边界。首个节点不填。 */
+  readonly relation?: string;
   readonly confidence: "high" | "medium" | "low";
 }
 

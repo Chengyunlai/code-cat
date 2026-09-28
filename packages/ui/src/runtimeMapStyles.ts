@@ -32,8 +32,8 @@ export const runtimeMapStyles = String.raw`
     .tools-menu { position: relative; margin-left: auto; }
     .tools-menu > summary { padding: 7px 9px; color: var(--cc-accent); font-size: 12px; cursor: pointer; border-radius: 4px; list-style: none; }
     .tools-menu > summary::-webkit-details-marker { display: none; }
-    .tools-menu > summary:hover, .tools-menu[open] > summary { background: var(--cc-accent-wash); color: var(--cc-accent); }
-    .tools-panel { position: absolute; bottom: calc(100% + 8px); right: 0; width: min(340px, calc(100vw - 28px)); max-height: min(60vh, 420px); overflow: auto; padding: 14px; background: var(--cc-bg); border: 1px solid var(--cc-border); border-radius: 8px; }
+    .tools-menu[open] > summary { background: var(--cc-accent-wash); color: var(--cc-accent); }
+    .tools-panel { position: absolute; bottom: calc(100% + 8px); right: 0; width: min(340px, calc(100vw - 28px)); max-height: min(60vh, 420px); overflow: auto; scrollbar-width: thin; padding: 14px; background: var(--cc-bg); border: 1px solid var(--cc-border); border-radius: 8px; }
     .tools-panel .model-provider { width: 100%; max-width: none; padding: 8px 0; justify-content: space-between; }
     .tools-panel .model-provider-label { display: block; }
     .tools-panel .header-actions { margin-top: 8px; border-top: 1px solid var(--cc-border); }
@@ -45,11 +45,32 @@ export const runtimeMapStyles = String.raw`
     .observation-status.live { padding: 3px 7px; color: var(--cc-observed); background: color-mix(in srgb, var(--cc-observed) 10%, var(--cc-bg)); border-radius: 4px; }
     .observation-status.exception { color: var(--cc-danger); background: color-mix(in srgb, var(--cc-danger) 10%, var(--cc-bg)); }
     .observation-location { padding: 3px 0; color: var(--cc-accent); background: transparent; border: 0; font-weight: 600; text-align: left; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--cc-accent) 35%, transparent); text-underline-offset: 4px; overflow-wrap: anywhere; }
-    .observation-location:hover { text-decoration-color: currentColor; }
+    .observation-context { margin-top: 14px; padding: 12px 13px; border-radius: 8px; background: var(--cc-surface); }
+    .observation-context-label { color: var(--cc-inference); font-size: 11px; font-weight: 650; }
+    .observation-context p { margin: 6px 0 0; line-height: 1.55; overflow-wrap: anywhere; }
     .observation-hint { color: var(--cc-muted); margin: 10px 0; line-height: 1.65; }
+    .observation-limit { margin: 0 0 10px; color: var(--cc-unknown); font-size: 12px; line-height: 1.55; }
+    .observation-questions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--cc-border); }
+    .observation-questions > span { flex-basis: 100%; color: var(--cc-muted); font-size: 11px; }
+    .observation-suggestion { min-height: 30px; padding: 5px 9px; border: 1px solid var(--cc-border); border-radius: 6px; background: var(--cc-bg); color: var(--cc-accent); font-size: 12px; }
+    .architecture-map { margin: 14px 0 22px; padding: 14px; border-radius: 10px; background: var(--cc-surface); }
+    .architecture-heading strong { font-size: 13px; }
+    .architecture-heading p { margin: 4px 0 13px; color: var(--cc-muted); font-size: 11px; line-height: 1.55; }
+    .architecture-tree { display: flex; align-items: flex-start; gap: 0; min-width: 0; }
+    .architecture-origin, .architecture-directory { overflow-wrap: anywhere; }
+    .architecture-origin { position: relative; flex: 0 0 auto; max-width: 90px; padding: 7px 9px; border-radius: 6px; color: var(--cc-ink); background: var(--cc-bg); font-size: 11px; font-weight: 650; }
+    .architecture-origin::after { content: ''; position: absolute; top: 15px; right: -17px; width: 17px; height: 1px; background: var(--cc-border); }
+    .architecture-branches { flex: 1; min-width: 0; margin-left: 17px; padding-left: 17px; border-left: 1px solid var(--cc-border); }
+    .architecture-group { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; padding: 0 0 11px; }
+    .architecture-group:last-child { padding-bottom: 0; }
+    .architecture-group::before { content: ''; position: absolute; width: 17px; height: 1px; left: -17px; top: 15px; background: var(--cc-border); }
+    .architecture-directory { flex-basis: 100%; color: var(--cc-inference); font: 600 11px/1.5 var(--vscode-editor-font-family, monospace); }
+    .action.architecture-file { max-width: 100%; min-height: 28px; padding: 4px 8px; border: 1px solid var(--cc-border); border-radius: 5px; color: var(--cc-accent); background: var(--cc-bg); font: 11px/1.4 var(--vscode-editor-font-family, monospace); text-align: left; overflow-wrap: anywhere; }
+    .architecture-file-role { display: -webkit-box; margin-top: 2px; overflow: hidden; color: var(--cc-muted); font: 10px/1.4 var(--vscode-font-family, sans-serif); -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .architecture-more { color: var(--cc-muted); font-size: 11px; }
+    .action.architecture-toggle { min-height: 26px; margin-top: 10px; padding: 4px 0; border: 0; color: var(--cc-accent); background: transparent; font-size: 11px; }
     .observation-evidence > summary { cursor: pointer; padding: 9px 6px; margin: 0 -6px; border-radius: 4px; font-size: 12px; color: var(--cc-accent); }
-    .observation-evidence > summary:hover { background: var(--cc-accent-wash); }
-    .observation-source { background: var(--cc-surface); padding: 12px; border-radius: 6px; overflow-x: auto; font: 12px/1.7 var(--vscode-editor-font-family, monospace); }
+    .observation-source { background: var(--cc-surface); padding: 12px; border-radius: 6px; overflow-x: auto; scrollbar-width: thin; font: 12px/1.7 var(--vscode-editor-font-family, monospace); }
     .syntax-keyword { color: var(--cc-inference); font-weight: 600; }
     .syntax-string { color: var(--cc-observed); }
     .syntax-number { color: var(--cc-unknown); }
@@ -59,7 +80,6 @@ export const runtimeMapStyles = String.raw`
     .evidence-label.inference { color: var(--cc-inference); background: color-mix(in srgb, var(--cc-inference) 9%, var(--cc-bg)); }
     .evidence-label.unknown { color: var(--cc-unknown); background: color-mix(in srgb, var(--cc-unknown) 9%, var(--cc-bg)); }
     .stack-source-link { color: var(--cc-accent); border: 0; background: transparent; font: inherit; padding: 3px 0; text-align: left; overflow-wrap: anywhere; }
-    .stack-source-link:hover { text-decoration: underline; text-underline-offset: 3px; }
     .observation-variables { display: grid; grid-template-columns: minmax(70px, 1fr) minmax(0, 2fr); gap: 8px 12px; font-size: 12px; }
     .observation-variables dt { font-family: var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; }
     .observation-variables dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -69,10 +89,26 @@ export const runtimeMapStyles = String.raw`
     .debug-controls:empty { display: none; }
     .debug-controls .action-row { margin: 0 0 10px; gap: 5px; }
     .debug-controls .action { min-height: 30px; padding: 5px 8px; font-size: 12px; }
-    .evidence-context label { flex-shrink: 0; color: var(--cc-muted); }
-    .evidence-context select { flex: 1; min-width: 0; padding: 5px; font: inherit; color: var(--cc-ink); background: var(--cc-bg); border: 1px solid var(--cc-border); border-radius: 4px; }
+    .evidence-context label { flex-shrink: 0; color: var(--cc-muted); cursor: pointer; }
+    .evidence-context select {
+      flex: 1;
+      min-width: 0;
+      min-height: 32px;
+      padding: 5px 26px 5px 9px;
+      font: inherit;
+      color: var(--cc-ink);
+      background-color: var(--cc-bg);
+      background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+      background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+      border: 1px solid var(--cc-border);
+      border-radius: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      text-overflow: ellipsis;
+    }
     .evidence-reference { margin-top: 8px; font-size: 11px; color: var(--cc-muted); }
-    summary:focus-visible, select:focus-visible { outline: 2px solid var(--cc-focus); outline-offset: 2px; }
     @media (max-width: 400px) {
       .composer-shortcut { display: none; }
       .observation-variables { grid-template-columns: 1fr; gap: 3px; }
@@ -87,10 +123,13 @@ export const runtimeMapStyles = String.raw`
       -webkit-font-smoothing: antialiased;
     }
     button, textarea { font: inherit; }
-    button { cursor: pointer; }
-    button:disabled { cursor: default; opacity: .5; }
-    button:focus-visible, textarea:focus-visible {
-      outline: 1px solid var(--cc-focus);
+    button, textarea, select, summary { -webkit-tap-highlight-color: transparent; }
+    button, summary, select { cursor: pointer; }
+    button, summary { user-select: none; }
+    .action.source-reference, .stack-source-link, .observation-location { user-select: text; }
+    button:disabled, select:disabled { cursor: default; opacity: .5; }
+    button:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+      outline: 2px solid var(--cc-focus);
       outline-offset: 2px;
     }
     .app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
@@ -241,6 +280,7 @@ export const runtimeMapStyles = String.raw`
       font-weight: 500;
     }
     .action.primary { color: var(--cc-on-strong); background: var(--cc-strong); }
+    .action.primary:disabled { color: var(--cc-muted); background: var(--cc-surface); }
     .action.quiet { color: var(--cc-accent); background: transparent; }
     .empty-state { padding: 38px 0 0; }
     .empty-copy { max-width: 560px; }
@@ -421,6 +461,10 @@ export const runtimeMapStyles = String.raw`
     .path-title { display: block; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
     .path-file { display: block; margin-top: 4px; overflow: hidden; color: var(--cc-muted); text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family, ui-monospace, monospace); font-size: 10px; }
     .path-reason { display: -webkit-box; margin-top: 7px; overflow: hidden; color: var(--cc-muted); font-size: 11px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    /* 职责讲设计意图，用 accent 竖线区分于「为什么停在这一行」的 reason；
+       relation 是源码推断出的关系，沿用推断色，与已观察证据保持区分。 */
+    .path-role { display: -webkit-box; margin-top: 8px; padding-left: 8px; border-left: 2px solid var(--cc-accent); overflow: hidden; color: var(--cc-ink); font-size: 11px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .path-relation { display: -webkit-box; margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--cc-border); overflow: hidden; color: var(--cc-inference); font-size: 11px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
     .breakpoint-control {
       position: absolute;
       top: 0;
@@ -487,9 +531,9 @@ export const runtimeMapStyles = String.raw`
       background: color-mix(in srgb, var(--cc-surface) 38%, var(--cc-bg));
       border: 1px solid var(--cc-border);
       border-radius: 10px;
-      transition: border-color 150ms ease, background-color 150ms ease;
+      transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
     }
-    .composer-inner:focus-within { border-color: var(--cc-accent); outline: 2px solid var(--cc-accent-wash); }
+    .composer-inner:focus-within { border-color: var(--cc-accent); box-shadow: 0 0 0 3px var(--cc-accent-wash); }
     .composer-inner.busy { background: var(--cc-surface); }
     .composer textarea {
       display: block;
@@ -499,13 +543,16 @@ export const runtimeMapStyles = String.raw`
       padding: 7px 2px 5px;
       resize: none;
       overflow-y: auto;
+      scrollbar-width: thin;
       color: var(--cc-ink);
       caret-color: var(--cc-focus);
+      cursor: text;
       background: transparent;
       border: 0;
       line-height: 1.45;
     }
     .composer textarea::placeholder { color: var(--cc-muted); opacity: 1; }
+    .composer textarea::selection { background: color-mix(in srgb, var(--cc-accent) 30%, transparent); }
     .composer textarea:focus-visible { outline: 0; }
     .composer-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
     .composer-mode { min-width: 0; overflow: hidden; color: var(--cc-muted); text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
@@ -543,7 +590,12 @@ export const runtimeMapStyles = String.raw`
     .source-link,
     .action,
     .path-node,
-    .breakpoint-control {
+    .breakpoint-control,
+    .stack-frame,
+    /* .tab 刻意不参与过渡：高频键盘导航必须即时响应，见 test/smoke/index.js 的即时性断言。 */
+    .evidence-context select,
+    .tools-menu > summary,
+    .observation-evidence > summary {
       transition:
         transform 140ms var(--cc-ease-out),
         background-color 120ms ease,
@@ -551,10 +603,11 @@ export const runtimeMapStyles = String.raw`
         color 120ms ease,
         opacity 120ms ease;
     }
+    .observation-location { transition: text-decoration-color 120ms ease; }
     @media (hover: hover) and (pointer: fine) {
       .session-title:hover { color: var(--cc-ink); background: var(--cc-surface-hover); }
       .model-provider:hover { color: var(--cc-ink); background: var(--cc-surface-hover); }
-      .tab:hover { color: var(--cc-ink); }
+      .tab:hover { color: var(--cc-ink); background: var(--cc-surface-hover); }
       .pause-chip:hover { color: var(--cc-ink); background: var(--cc-surface-hover); }
       .source-link:hover { background: var(--cc-surface-hover); }
       .action:hover { background: var(--cc-surface-hover); }
@@ -565,15 +618,27 @@ export const runtimeMapStyles = String.raw`
       .stack-frame:hover { background: var(--cc-surface-hover); }
       .composer-inner:hover { border-color: var(--cc-muted); }
       .send:hover:not(:disabled) { background: var(--cc-accent-hover); }
+      .tools-menu > summary:hover { color: var(--cc-accent); background: var(--cc-accent-wash); }
+      .observation-evidence > summary:hover { background: var(--cc-accent-wash); }
+      .observation-location:hover { text-decoration-color: currentColor; }
+      .observation-suggestion:hover { border-color: var(--cc-accent); background: var(--cc-accent-wash); }
+      .action.architecture-file:hover { border-color: var(--cc-accent); background: var(--cc-accent-wash); }
+      .action.architecture-toggle:hover { text-decoration: underline; }
+      .stack-source-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+      .evidence-context select:hover { border-color: var(--cc-accent); background-color: var(--cc-accent-wash); }
     }
     .model-provider:active:not(:disabled),
     .session-title:active:not(:disabled),
     .pause-chip:active:not(:disabled),
+    .tab:active:not(:disabled),
     .action:active:not(:disabled) { transform: scale(.97); }
     .source-link:active:not(:disabled),
-    .path-node:active:not(:disabled) { transform: scale(.99); }
+    .path-node:active:not(:disabled),
+    .stack-frame:active:not(:disabled) { transform: scale(.995); }
     .breakpoint-control:active:not(:disabled),
     .send:active:not(:disabled) { transform: scale(.96); }
+    .tools-menu > summary:active,
+    .observation-evidence > summary:active { background: var(--cc-accent-wash); }
     .session-title:focus-visible,
     .model-provider:focus-visible,
     .pause-chip:focus-visible,
@@ -581,7 +646,12 @@ export const runtimeMapStyles = String.raw`
     .action:focus-visible,
     .path-node:focus-visible,
     .breakpoint-control:focus-visible,
-    .send:focus-visible { transition-duration: 0ms; }
+    .send:focus-visible,
+    .stack-frame:focus-visible,
+    .observation-location:focus-visible,
+    .evidence-context select:focus-visible,
+    .tools-menu > summary:focus-visible,
+    .observation-evidence > summary:focus-visible { transition-duration: 0ms; }
     .session-title:focus-visible:active,
     .model-provider:focus-visible:active,
     .pause-chip:focus-visible:active,
@@ -589,7 +659,9 @@ export const runtimeMapStyles = String.raw`
     .action:focus-visible:active,
     .path-node:focus-visible:active,
     .breakpoint-control:focus-visible:active,
-    .send:focus-visible:active { transform: none; }
+    .send:focus-visible:active,
+    .tab:focus-visible:active,
+    .stack-frame:focus-visible:active { transform: none; }
     @media (min-width: 620px) {
       .app-header { padding-inline: 18px; }
       main { padding: 26px 18px 38px; }

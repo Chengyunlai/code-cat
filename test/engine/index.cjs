@@ -11,7 +11,9 @@ const http=require('node:http');
  const server=http.createServer(async(req,res)=>{
   let raw='';for await(const c of req)raw+=c;const request=JSON.parse(raw);assert.equal(request.stream,true);
   res.writeHead(200,{'Content-Type':'text/event-stream'});
-  const text=JSON.stringify({kind:'project_chat',message:'## 观察库存\n\n当前源码声明了 `stock`，运行时值需要断点证据。'});
+  const text=raw.includes('文件怎么组织')
+    ? JSON.stringify({kind:'route',summary:'库存示例的入口文件负责展示当前库存。',nodes:[{title:'读取库存',file:'stock.ts',line:2,reason:'观察输出位置',confidence:'high'}]})
+    : JSON.stringify({kind:'project_chat',message:'## 观察库存\n\n当前源码声明了 `stock`，运行时值需要断点证据。'});
   for(const part of [text.slice(0,45),text.slice(45)]){res.write('data: '+JSON.stringify({choices:[{delta:{content:part}}]})+'\n\n');await new Promise(r=>setTimeout(r,120));}
   res.end('data: [DONE]\n\n');
  });
@@ -25,6 +27,10 @@ const http=require('node:http');
   send({type:'askQuestion',question:'这个 TypeScript 项目的库存代码如何理解？'});
   await until(e=>e.method==='view'&&e.params.state.streamingAnswer?.text);
   await until(e=>e.method==='view'&&!e.params.state.requestPending&&e.params.state.chatMessages.some(m=>m.role==='assistant'));
+  send({type:'askQuestion',question:'这个项目的文件怎么组织？'});
+  const organized=await until(e=>e.method==='view'&&e.params.state.organizationFiles?.length===1);
+  assert.equal(organized.params.state.organizationFiles[0].fileLabel,'stock.ts');
+  assert.equal(organized.params.state.organizationFiles[0].title,'读取库存');
   send({method:'started',sessionId:'missed-entry'});
   send({method:'ended',sessionId:'missed-entry'});
   await until(e=>e.method==='view'&&e.params.state.tutorMessage?.text?.includes('没有捕获到暂停'));

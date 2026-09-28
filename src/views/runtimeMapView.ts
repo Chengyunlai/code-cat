@@ -75,6 +75,7 @@ interface RenderedDiagnostics {
   readonly renderedExplorationContextCount: number;
   readonly coreLocationCount: number;
   readonly coreLocationText: string;
+  readonly architectureRoleText: string;
   readonly debugInvitationCount: number;
   readonly debugInvitationText: string;
   readonly composerShortcutText: string;
@@ -185,6 +186,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
     readonly renderedExplorationContextCount: number;
     readonly renderedCoreLocationCount: number;
     readonly renderedCoreLocationText: string;
+    readonly renderedArchitectureRoleText: string;
     readonly renderedDebugInvitationCount: number;
     readonly renderedDebugInvitationText: string;
     readonly renderedComposerShortcutText: string;
@@ -240,6 +242,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
         this.renderedDiagnostics.renderedExplorationContextCount,
       renderedCoreLocationCount: this.renderedDiagnostics.coreLocationCount,
       renderedCoreLocationText: this.renderedDiagnostics.coreLocationText,
+      renderedArchitectureRoleText: this.renderedDiagnostics.architectureRoleText,
       renderedDebugInvitationCount:
         this.renderedDiagnostics.debugInvitationCount,
       renderedDebugInvitationText: this.renderedDiagnostics.debugInvitationText,
@@ -345,6 +348,13 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
           }),
         }
       : undefined;
+    const organizationFiles = state.route?.nodes.map((node) => ({
+      id: node.id,
+      fileLabel: vscode.workspace.asRelativePath(node.location.path, false),
+      title: node.title,
+      // 组织图优先显示职责，缺省回退 title，因此这里要一起投影。
+      role: node.role,
+    })) ?? [];
     const pauses = state.pauses.map((pause) => ({
       ...pause,
       id: pause.id,
@@ -374,6 +384,7 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       version: this.stateVersion,
       state: {
         route,
+        organizationFiles,
         pauses,
         frames,
         variables: currentPause?.variables ?? [],
@@ -592,6 +603,7 @@ function emptyRenderedDiagnostics(): RenderedDiagnostics {
     renderedExplorationContextCount: 0,
     coreLocationCount: 0,
     coreLocationText: "",
+    architectureRoleText: "",
     debugInvitationCount: 0,
     debugInvitationText: "",
     composerShortcutText: "",
@@ -638,6 +650,7 @@ function parseRenderedDiagnostics(value: unknown): RenderedDiagnostics {
     ),
     coreLocationCount: numberDiagnostic(diagnostics.coreLocationCount),
     coreLocationText: stringDiagnostic(diagnostics.coreLocationText),
+    architectureRoleText: stringDiagnostic(diagnostics.architectureRoleText),
     debugInvitationCount: numberDiagnostic(diagnostics.debugInvitationCount),
     debugInvitationText: stringDiagnostic(diagnostics.debugInvitationText),
     composerShortcutText:

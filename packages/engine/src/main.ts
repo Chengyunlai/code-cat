@@ -45,6 +45,7 @@ async function main(): Promise<void> {
           const bp=breakpoints.find(item=>item.path===node.location.path&&item.line===node.location.line);
           return {...node,fileLabel:fileLabel(node.location.path),breakpoint:Boolean(bp),breakpointState:bp?(bp.managed?"managed":"external"):"none"};
         })}:undefined,
+      organizationFiles:state.route?.nodes.map(node=>({id:node.id,fileLabel:fileLabel(node.location.path),title:node.title,role:node.role})) ?? [],
       chatMessages:state.chatMessages.map(message=>{
         const target=store.routeForMessage(message.id)?.nodes[0];
         return {...message,debugTarget:target?{title:target.title,fileLabel:fileLabel(target.location.path),line:target.location.line}:undefined};
