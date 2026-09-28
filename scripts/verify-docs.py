@@ -243,6 +243,24 @@ if ignored is not None:
     else:
         print(f"  OK   {vscodeignore} 已排除 {must_ignore}")
 
+# 标签覆盖情况：只提示不判失败。PR 里先升版本、合并后再打标签是正常流程，
+# 因此这里不能在 PR 上直接报错。
+try:
+    tags = subprocess.run(
+        ["git", "tag", "--list", "v[0-9]*"], capture_output=True, check=True
+    ).stdout.decode("utf-8").split()
+except (OSError, subprocess.CalledProcessError):
+    tags = []
+
+if not tags:
+    print("  跳过：仓库里还没有 vX.Y.Z 标签")
+elif vscode_version:
+    if f"v{vscode_version}" in tags:
+        print(f"  OK   当前版本 v{vscode_version} 有对应标签（共 {len(tags)} 个版本标签）")
+    else:
+        print(f"  提示 当前版本 {vscode_version} 还没有对应标签 v{vscode_version}（共 {len(tags)} 个版本标签）")
+        print("        合并到 main 后记得打标签并建 Release，见 docs/development.md 的「标签与 Release」")
+
 
 # ---------- 汇总 ----------
 print("\n" + "=" * 46)

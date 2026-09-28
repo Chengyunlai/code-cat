@@ -122,6 +122,26 @@ npm run build:jetbrains     # 产物在 plugins/jetbrains/build/
 
 发版后同步更新 [CHANGELOG.md](../CHANGELOG.md)、[CONTEXT.md](../CONTEXT.md) 的「版本与发布状态」一节，以及两个 README 顶部的当前版本行，然后跑 `python3 scripts/verify-docs.py` 确认没有漂移。JetBrains 的 change notes 必须在上传前定稿——上传后只有兼容范围可改。流程见 [plugins/jetbrains/MARKETPLACE.md](../plugins/jetbrains/MARKETPLACE.md)。
 
+### 标签与 Release
+
+标签名跟 **VS Code 版本线**，带 `v` 前缀，用附注标签（`git tag -a`）。**先提交并推送 `main`，再打标签**，否则标签会落后于 `main`。
+
+```bash
+git tag -a v0.2.9 -m "Code Cat 0.2.9 …"
+git push origin v0.2.9
+gh release create v0.2.9 --verify-tag --title "Code Cat 0.2.9" --notes-file /tmp/notes.md --latest
+gh release upload v0.2.9 code-cat-0.2.9.vsix <jetbrains zips>
+```
+
+约定：
+
+- `--verify-tag` 保证标签已存在，不会让 gh 从默认分支凭空建一个。
+- Release notes 用 `--notes-file` 传，避免 shell 转义；正文按 CHANGELOG 对应小节改写成用户可读版本，并加一节「安装」。
+- Release 必须挂构建产物：VS Code 扩展未上架 Marketplace，JetBrains 的本地预览包也不在任何渠道，Release 附件是唯一的下载入口。
+- 标签指向「该版本首次出现在 `package.json` 的提交」。`0.1.5` 与 `0.1.7`–`0.2.2` 从未单独提交，没有对应标签；不要为它们造标签。
+- 不为历史版本补建 GitHub Release：`gh release create` 无法回填发布日期，十几个历史版本会全部显示成同一天，比只保留标签更误导。
+- `CHANGELOG.md` 的版本标题统一不带链接——部分版本有标签、部分没有，只给有标签的加链接会不一致。
+
 ## 常见坑
 
 | 坑 | 表现 | 处理 |
