@@ -7,7 +7,7 @@
 ## 安装与使用
 
 1. 在仓库执行 `npm ci`、`npm run build:jetbrains`。默认使用 macOS `/Applications/WebStorm.app/Contents` 的 SDK；要构建 PyCharm 2026.1 包，执行 `CODE_CAT_JETBRAINS_HOME=/Applications/PyCharm.app/Contents npm run build:jetbrains`。构建需要该 IDE 自带的 JDK 21、Node.js 20+ 和 Python 3。
-2. 在对应 IDE 的 Settings → Plugins → 齿轮 → Install Plugin from Disk 中选择 `build/code-cat-jetbrains-0.2.10-preview-webstorm-251.zip` 或 `build/code-cat-jetbrains-0.2.10-preview-pycharm-261.zip`，重启 IDE。PyCharm 2026.1（261）不能安装 251 包。Marketplace 上的公开版本仍是 `0.2.3-preview`（仅 251）。
+2. 在对应 IDE 的 Settings → Plugins → 齿轮 → Install Plugin from Disk 中选择 `build/code-cat-jetbrains-0.2.11-preview-webstorm-251.zip` 或 `build/code-cat-jetbrains-0.2.11-preview-pycharm-261.zip`，重启 IDE。PyCharm 2026.1（261）不能安装 251 包。Marketplace 上的公开版本仍是 `0.2.3-preview`（仅 251）。
 3. 打开项目与 Code Cat 工具窗口。在“更多 → 配置模型”填写协议、Base URL、模型名与 API Key。插件会自动查找 Node.js 20+，包括 PATH、常见 macOS 安装位置和 NVM 版本目录；自定义安装位置可通过 `CODECAT_NODE` 指定。密钥保存至 JetBrains PasswordSafe，不写进项目或会话历史。
 4. 直接提问以理解项目；已有运行配置时，点击回答中的“进入调试”设置断点并启动所选配置。暂停后可继续提问、跳转源码、单步和继续运行。会话标题可打开历史或新建会话。
 

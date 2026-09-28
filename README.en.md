@@ -12,7 +12,7 @@ location to a real breakpoint and updates the reading path from the actual call 
 
 ## Guided exploration from purpose to pause
 
-The local `0.2.10-preview` starts code questions with the feature's purpose, responsibility and place in the project before following a focused source path. A debugger pause separates source-based clues from observed runtime facts and offers three editable follow-up prompts: role, mechanism and next verification. The user chooses when to send or step; missing variables and stack frames are never invented. Try the [Stage 05 checkout example](examples/stage-05-guided-depth/user_code/README.md). The Marketplace version `0.2.3-preview` does not include these changes and only covers the 2025.1 line.
+The local `0.2.11-preview` starts code questions with the feature's purpose, responsibility and place in the project before following a focused source path. A debugger pause separates source-based clues from observed runtime facts and offers three editable follow-up prompts: role, mechanism and next verification. The user chooses when to send or step; missing variables and stack frames are never invented. Try the [Stage 05 checkout example](examples/stage-05-guided-depth/user_code/README.md). The Marketplace version `0.2.3-preview` does not include these changes and only covers the 2025.1 line.
 
 A compact code-organization diagram sits beside the route answer. It groups only source files located for this exploration by directory; clicking a file opens source. Its connectors mean containment, never calls or runtime execution.
 
