@@ -293,7 +293,7 @@
     "check": "tsc -p packages/core/tsconfig.json && tsc -p packages/ui/tsconfig.json && tsc -p packages/engine/tsconfig.json --noEmit && tsc -p tsconfig.json --noEmit",
     "smoke:vscode": "npm run compile && node scripts/run-vscode-smoke.mjs",
     "package": "npm run compile && vsce package --no-dependencies --allow-missing-repository",
-    "test:engine": "npm run compile && node examples/stage-04-shared-core/user_code/main.cjs && node test/engine/index.cjs && node test/engine/retrieval.cjs",
+    "test:engine": "npm run compile && node examples/stage-04-shared-core/user_code/main.cjs && node test/engine/index.cjs && node test/engine/retrieval.cjs && node test/engine/timeout.cjs",
     "build:jetbrains": "npm run compile && python3 scripts/build-jetbrains.py",
     "publish:jetbrains": "python3 scripts/publish-jetbrains.py",
     "smoke:jetbrains": "npm run compile && python3 scripts/run-jetbrains-smoke.py"

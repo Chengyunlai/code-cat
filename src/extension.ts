@@ -100,6 +100,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const pause = store.selectedPause();
       const priorMessages = store.beginQuestion(question);
       if (!priorMessages) {
+        store.notifyQuestionBusy(question);
         return;
       }
       const cancellation = new vscode.CancellationTokenSource();

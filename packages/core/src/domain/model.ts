@@ -89,6 +89,12 @@ export type TutorMessage =
       readonly id: string;
       readonly kind: "system" | "error";
       readonly text: string;
+    }
+  | {
+      /** 上一条回答还没结束时又提问：提示这次没有发送，不打断进行中的请求。 */
+      readonly id: string;
+      readonly kind: "busy";
+      readonly text: string;
     };
 
 export interface ChatMessage {

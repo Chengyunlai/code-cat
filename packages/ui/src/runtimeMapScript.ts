@@ -536,7 +536,9 @@ export const runtimeMapScript = String.raw`
       }
       if (
         state.tutorMessage &&
-        (state.tutorMessage.kind === 'error' || state.tutorMessage.kind === 'system')
+        (state.tutorMessage.kind === 'error' ||
+          state.tutorMessage.kind === 'system' ||
+          state.tutorMessage.kind === 'busy')
       ) {
         renderTutorMessage(root, state);
       }
@@ -549,12 +551,17 @@ export const runtimeMapScript = String.raw`
     function renderTutorMessage(root, state) {
       const message = state.tutorMessage;
       const isError = message.kind === 'error';
+      const isBusy = message.kind === 'busy';
       const heading = sectionHeading(
-        isError ? '这次请求没有完成' : '还需要一步',
-        isError ? '你可以修正配置或换个问法后重试' : 'Code Cat 没有发起模型请求',
+        isError ? '这次请求没有完成' : isBusy ? '上一条回答还在进行' : '还需要一步',
+        isError
+          ? '你可以修正配置或换个问法后重试'
+          : isBusy
+            ? '点「停止回答」结束它，或等它返回后再问'
+            : 'Code Cat 没有发起模型请求',
       );
       const copy = document.createElement('p');
-      copy.className = 'lesson-copy notice' + (isError ? ' error' : '');
+      copy.className = 'lesson-copy notice' + (isError ? ' error' : isBusy ? ' busy' : '');
       copy.textContent = message.text;
       root.append(heading, copy);
       if (!state.workspaceOpen) {

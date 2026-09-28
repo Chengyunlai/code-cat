@@ -1,4 +1,4 @@
-import { CancellationError, CancellationToken } from "../ports";
+import { CancellationError, CancellationToken, Disposable } from "../ports";
 import { estimateTokenUsage, ModelClientResponse } from "./tokenUsage";
 
 export type HttpModelTransport =
@@ -24,6 +24,57 @@ interface ReportedUsageFields {
 }
 
 const REQUEST_TIMEOUT_MS = 90_000;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * 超时不能只依赖 AbortController。当服务端已经返回响应头、响应体却迟迟不来时，
+ * abort() 并不会让挂起的读取抛错（实测：redirect 为 error 时，超时超过约 8 秒即失效），
+ * 请求会永久悬挂，调用方永远等不到结果。这里额外用一个必定 reject 的定时器与请求竞争，
+ * 保证无论底层如何表现，Promise 一定会 settle。取消同理：abort() 同样不一定能打断挂起的读取，
+ * 所以也参与竞争，让「停止回答」立刻返回。
+ */
+async function withRequestDeadline<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  abort: () => void,
+  token?: CancellationToken,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancellation: Disposable | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      abort();
+      reject(new Error(`The model provider request timed out after ${timeoutMs} ms.`));
+    }, timeoutMs);
+  });
+  const racers: Promise<T>[] = [operation, deadline];
+  if (token) {
+    racers.push(
+      new Promise<never>((_resolve, reject) => {
+        cancellation = token.onCancellationRequested(() => reject(new CancellationError()));
+        if (token.isCancellationRequested) reject(new CancellationError());
+      }),
+    );
+  }
+  // 超时或取消之后请求可能仍在后台自行失败；先挂一个空处理器，避免成为未处理的 rejection。
+  operation.catch(() => undefined);
+  try {
+    return await Promise.race(racers);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    cancellation?.dispose();
+  }
+}
+
+/**
+ * 不跟随重定向，但也不使用 redirect:"error"——后者会让挂起的响应体读取失去可中断性。
+ * 这里改成 manual 并自行拒绝，既不把凭据转发到别的地址，又保留超时的可靠性。
+ */
+function redirectRejection(status: number): Error | undefined {
+  return REDIRECT_STATUSES.has(status)
+    ? new Error(`The model provider redirected the request (${status}). Check the Base URL.`)
+    : undefined;
+}
 
 export async function requestHttpModel(
   request: HttpModelRequest,
@@ -283,24 +334,34 @@ async function postJson(
   const timeoutMs = requestedTimeoutMs
     ? Math.max(1, Math.floor(requestedTimeoutMs))
     : REQUEST_TIMEOUT_MS;
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-      redirect: "error",
-    });
-    const raw = await response.text();
-    const payload = parseJson(raw);
-    if (!response.ok) {
-      throw new Error(formatProviderError(response.status, payload));
-    }
-    if (payload === undefined) {
-      throw new Error("The model provider returned a non-JSON response.");
-    }
-    return payload;
+    return await withRequestDeadline(
+      (async () => {
+        const response = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: controller.signal,
+          redirect: "manual",
+        });
+        const redirected = redirectRejection(response.status);
+        if (redirected) {
+          throw redirected;
+        }
+        const raw = await response.text();
+        const payload = parseJson(raw);
+        if (!response.ok) {
+          throw new Error(formatProviderError(response.status, payload));
+        }
+        if (payload === undefined) {
+          throw new Error("The model provider returned a non-JSON response.");
+        }
+        return payload;
+      })(),
+      timeoutMs,
+      () => controller.abort(),
+      token,
+    );
   } catch (error) {
     if (token.isCancellationRequested) {
       throw new CancellationError();
@@ -310,7 +371,6 @@ async function postJson(
     }
     throw error;
   } finally {
-    clearTimeout(timeout);
     cancellation.dispose();
   }
 }
@@ -412,8 +472,9 @@ async function requestStreamingModel(
   if (token.isCancellationRequested) throw new CancellationError();
   const controller = new AbortController();
   const cancellation = token.onCancellationRequested(() => controller.abort());
-  const timeoutMs = request.timeoutMs ?? REQUEST_TIMEOUT_MS;
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutMs = request.timeoutMs
+    ? Math.max(1, Math.floor(request.timeoutMs))
+    : REQUEST_TIMEOUT_MS;
   let text = "";
   let usage: ModelClientResponse["usage"] | undefined;
   let anthropicUsage: Record<string, unknown> = {};
@@ -462,33 +523,44 @@ async function requestStreamingModel(
     if (delta) { text += delta; onText(text); }
   }
   try {
-    const response = await fetch(joinUrl(request.baseUrl, endpoint), {
-      method: "POST", headers, body: JSON.stringify(body), signal: controller.signal, redirect: "error",
-    });
-    if (!response.ok) throw new Error(formatProviderError(response.status, parseJson(await response.text())));
-    if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
-      throw new Error("该服务未返回流式响应，请检查服务的流式接口支持与 Base URL。");
-    }
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for await (const chunk of response.body) {
-      buffer += decoder.decode(chunk, { stream: true });
-      // Split complete SSE events; network chunks need not align with lines or UTF-8 characters.
-      let boundary: RegExpExecArray | null;
-      while ((boundary = /\r?\n\r?\n/u.exec(buffer))) {
-        const event = buffer.slice(0, boundary.index);
-        buffer = buffer.slice(boundary.index + boundary[0].length);
-        const data = event.split(/\r?\n/u).filter(line => line.startsWith("data:"))
-          .map(line => line.slice(5).replace(/^ /u, "")).join("\n");
-        if (data) accept(data);
-      }
-      if (buffer.length > 1_000_000 || text.length > 1_000_000) throw new Error("模型响应超过长度限制。");
-    }
-    if (!complete) throw new Error("回答连接中断，未收到完成标记。请重试。");
-    return { text: requireModelText(text, "Streaming API"), usage: usage ?? estimateTokenUsage(request.prompt, text) };
+    return await withRequestDeadline(
+      (async () => {
+        const response = await fetch(joinUrl(request.baseUrl, endpoint), {
+          method: "POST", headers, body: JSON.stringify(body), signal: controller.signal, redirect: "manual",
+        });
+        const redirected = redirectRejection(response.status);
+        if (redirected) throw redirected;
+        if (!response.ok) throw new Error(formatProviderError(response.status, parseJson(await response.text())));
+        if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
+          throw new Error("该服务未返回流式响应，请检查服务的流式接口支持与 Base URL。");
+        }
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for await (const chunk of response.body) {
+          buffer += decoder.decode(chunk, { stream: true });
+          // Split complete SSE events; network chunks need not align with lines or UTF-8 characters.
+          let boundary: RegExpExecArray | null;
+          while ((boundary = /\r?\n\r?\n/u.exec(buffer))) {
+            const event = buffer.slice(0, boundary.index);
+            buffer = buffer.slice(boundary.index + boundary[0].length);
+            const data = event.split(/\r?\n/u).filter(line => line.startsWith("data:"))
+              .map(line => line.slice(5).replace(/^ /u, "")).join("\n");
+            if (data) accept(data);
+          }
+          if (buffer.length > 1_000_000 || text.length > 1_000_000) throw new Error("模型响应超过长度限制。");
+        }
+        if (!complete) throw new Error("回答连接中断，未收到完成标记。请重试。");
+        return { text: requireModelText(text, "Streaming API"), usage: usage ?? estimateTokenUsage(request.prompt, text) };
+      })(),
+      timeoutMs,
+      () => controller.abort(),
+      token,
+    );
   } catch (error) {
     if (token.isCancellationRequested) throw new CancellationError();
-    if (controller.signal.aborted) throw new Error(`The model provider request timed out after ${timeoutMs} ms.`);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`The model provider request timed out after ${timeoutMs} ms.`);
+    }
     throw error;
-  } finally { clearTimeout(timeout); cancellation.dispose(); }
+  } finally { cancellation.dispose(); }
 }

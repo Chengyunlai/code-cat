@@ -301,6 +301,25 @@ export class SessionStore implements Disposable {
     });
   }
 
+  /**
+   * 上一条回答还没结束又来了新提问：给出可见提示，并把这次没发出去的问题放回输入框。
+   * 刻意不动 requestKind / busyMessage，进行中的请求不受影响。
+   */
+  public notifyQuestionBusy(question: string): void {
+    if (!this.state.requestKind) {
+      return;
+    }
+    this.updateConversation({
+      ...this.state,
+      tutorMessage: {
+        id: randomUUID(),
+        kind: "busy",
+        text: "上一条回答还在进行，这次提问没有发送。可以点「停止回答」结束它，或等它返回后再问。",
+      },
+      retryQuestion: question,
+    });
+  }
+
   public streamAnswer(text: string, pauseId?: string): void {
     if (this.state.requestKind !== "question" || !text) return;
     this.update({ ...this.state, streamingAnswer: { text, pauseId } });

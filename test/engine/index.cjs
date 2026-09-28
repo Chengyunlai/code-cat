@@ -21,6 +21,8 @@ const http=require('node:http');
    return;
   }
   res.writeHead(200,{'Content-Type':'text/event-stream'});
+  // 只回响应头、不回正文：模拟把插件卡在「正在思考」的那种服务端。
+  if(raw.includes('挂住的提问'))return;
   const text=raw.includes('文件怎么组织')
     ? JSON.stringify({kind:'route',summary:'库存示例的入口文件负责展示当前库存。',nodes:[{title:'读取库存',file:'stock.ts',line:2,reason:'观察输出位置',confidence:'high'}]})
     : JSON.stringify({kind:'project_chat',message:'## 观察库存\n\n当前源码声明了 `stock`，运行时值需要断点证据。'});
@@ -51,11 +53,22 @@ const http=require('node:http');
   send({method:'running',sessionId:'fixture'});await until(e=>e.method==='view'&&e.params.state.debugStatus==='running');
   const hostCount=events.filter(e=>e.method==='host').length;send({type:'debugCommand',command:'stepOver'});
   send({type:'openSourceReference',reference:'../outside.ts:1'});send({type:'unknown'});await until(e=>e.method==='error');assert.equal(events.filter(e=>e.method==='host').length,hostCount);
+  send({type:'askQuestion',question:'挂住的提问'});
+  await until(e=>e.method==='view'&&e.params.state.requestPending&&e.params.state.busyMessage==='正在思考');
+  // 上一条还没结束又提问：必须给出可见提示，而不是静默丢掉这次提问。
+  send({type:'askQuestion',question:'第二条提问'});
+  const busy=await until(e=>e.method==='view'&&e.params.state.tutorMessage?.kind==='busy');
+  assert.equal(busy.params.state.requestKind,'question','进行中的请求不能被新提问打断');
+  assert.equal(busy.params.state.requestPending,true,'提示不能把进行中的请求清掉');
+  assert.equal(busy.params.state.retryQuestion,'第二条提问','没发出去的提问要放回输入框');
+  assert.ok(!busy.params.state.chatMessages.some(m=>m.text==='第二条提问'),'没发出去的提问不能进入对话历史');
+  send({type:'cancelQuestion'});
+  await until(e=>e.method==='view'&&!e.params.state.requestPending);
   send({type:'askQuestion',question:'继续解释库存代码'});await until(e=>e.method==='view'&&e.params.state.requestPending&&e.params.state.chatMessages.length>=3);send({type:'cancelQuestion'});
   await until(e=>e.method==='view'&&e.params.state.tutorMessage?.text?.includes('停止'));
   child.stdin.end();await new Promise(r=>child.once('exit',r));
   const saved=await fs.readFile(path.join(temp,'state.json'),'utf8');assert.ok(!saved.includes('test-secret'));
   assert.ok(expansionRequests>0,'a Chinese-only question must expand retrieval terms before searching');
-  console.log(`Engine passed: streaming, pause projection, live-only controls, traversal rejection, cancellation, Chinese retrieval expansion (${expansionRequests}) and persistence without credentials.`);
+  console.log(`Engine passed: streaming, pause projection, live-only controls, traversal rejection, busy question notice, cancellation, Chinese retrieval expansion (${expansionRequests}) and persistence without credentials.`);
  }finally{child.kill();server.closeAllConnections();server.close();await fs.rm(temp,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

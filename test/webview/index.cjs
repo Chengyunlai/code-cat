@@ -124,6 +124,20 @@ async function run() {
     assert.equal(await page.locator('#locate').isDisabled(), true, 'parallel sends are blocked');
     assert.equal(await page.locator('.observation-evidence').evaluate((el) => el.open), true, 'evidence expansion survives state updates');
     assert.equal(await page.locator('.observation').isVisible(), true, 'waiting does not replace evidence');
+    // 上一条还没结束时又提问：提示必须可见、不算错误、并且把没发出去的提问放回输入框。
+    await page.locator('#question').fill('');
+    state = { ...state, tutorMessage: { id: 'busy-1', kind: 'busy', text: '上一条回答还在进行，这次提问没有发送。可以点「停止回答」结束它，或等它返回后再问。' }, retryQuestion: '那异常会被谁处理？' };
+    await send();
+    assert.match(await page.locator('.lesson-copy.notice.busy').evaluate((el) => el.previousElementSibling.textContent), /上一条回答还在进行/);
+    assert.match(await page.locator('.lesson-copy.notice.busy').textContent(), /这次提问没有发送/);
+    assert.equal(await page.locator('.lesson-copy.notice.error').count(), 0, 'busy notice is not styled as a failure');
+    assert.equal(await page.locator('#cancel-question').isVisible(), true, 'the notice points at a reachable way out');
+    assert.equal(await page.locator('#question').inputValue(), '那异常会被谁处理？', 'the unsent question returns to the input');
+    assert.equal(await page.locator('.observation').isVisible(), true, 'a busy notice keeps the evidence on screen');
+    await page.locator('.lesson-copy.notice.busy').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, 'busy-question-notice-360.png'), fullPage: true });
+    state = { ...state, tutorMessage: undefined, retryQuestion: undefined };
+    await send();
     state = { ...state, streamingAnswer: { text: '## 先看库存判断\n\n打开 [库存判断](src/inventory.ts:24)，观察当前值。\n\n```ts\nconst available = stock >= quantity;\nreturn available;\n```' } };
     await send();
     assert.equal(await page.locator('.streaming-answer h3').textContent(), '先看库存判断');
@@ -245,7 +259,7 @@ async function run() {
     await page.screenshot({ path: path.join(output, 'exploration-continuity-360.png'), fullPage: true });
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => window.sentMessages.some((item) => item.type === 'scriptError')), false);
-    console.log(`Webview behavior, theme overrides, contrast and 6 visual captures passed: ${output}`);
+    console.log(`Webview behavior, theme overrides, contrast and 7 visual captures passed: ${output}`);
   } finally {
     await browser.close();
   }

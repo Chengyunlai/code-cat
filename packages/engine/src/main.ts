@@ -63,7 +63,7 @@ async function main(): Promise<void> {
   }});
   async function ask(question:string): Promise<void> {
     const previous=store.beginQuestion(question);
-    if (!previous) return;
+    if (!previous) { store.notifyQuestionBusy(question); return; }
     const pause=store.selectedPause();
     const controller=new AbortController(); active=controller;
     const token=cancellationToken(controller.signal);
