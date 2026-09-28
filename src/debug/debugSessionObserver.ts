@@ -30,7 +30,7 @@ interface DapScope {
 export class DebugSessionObserver implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private readonly captureVersions = new Map<string, number>();
-  private readonly trackedSessions = new Set<string>();
+  private readonly trackedSessions = new Map<string, vscode.DebugSession>();
   private awaitingGuidedSession = false;
 
   public constructor(
@@ -39,7 +39,7 @@ export class DebugSessionObserver implements vscode.Disposable {
   ) {
     const factory: vscode.DebugAdapterTrackerFactory = {
       createDebugAdapterTracker: (session) => {
-        this.trackedSessions.add(session.id);
+        this.trackedSessions.set(session.id, session);
         if (this.awaitingGuidedSession && !this.store.snapshot().debugSessionId) {
           this.awaitingGuidedSession = false;
           this.store.beginDebugSession(session.id);
@@ -55,12 +55,22 @@ export class DebugSessionObserver implements vscode.Disposable {
       vscode.debug.registerDebugAdapterTrackerFactory("node", factory),
       vscode.debug.registerDebugAdapterTrackerFactory("pwa-node", factory),
       vscode.debug.onDidTerminateDebugSession((session) => {
-        const guidedSessionEnded = this.store.snapshot().debugSessionId === session.id;
+        const observedId = this.store.snapshot().debugSessionId;
+        const guidedSessionEnded = observedId === session.id;
         this.captureVersions.delete(session.id);
         this.trackedSessions.delete(session.id);
         this.store.endDebugSession(session.id);
         if (guidedSessionEnded) {
           this.onGuidedSessionEnded?.(session.id);
+          return;
+        }
+        // js-debug 为实际进程创建子会话，引导会话可能是那个子会话。子会话随父会话一起
+        // 结束，不会单独收到终止事件；不在这里补一次清理，debugSessionId 会残留，之后
+        // 的引导调试因为该字段非空而不再被观察。
+        if (observedId && isDescendantSession(this.trackedSessions.get(observedId), session)) {
+          this.trackedSessions.delete(observedId);
+          this.store.endDebugSession(observedId);
+          this.onGuidedSessionEnded?.(observedId);
         }
       }),
     );
@@ -297,6 +307,20 @@ function isDapScope(value: unknown): value is DapScope & {
     typeof value.name === "string" &&
     typeof value.variablesReference === "number"
   );
+}
+
+function isDescendantSession(
+  candidate: vscode.DebugSession | undefined,
+  ancestor: vscode.DebugSession,
+): boolean {
+  let parent = candidate?.parentSession;
+  while (parent) {
+    if (parent.id === ancestor.id) {
+      return true;
+    }
+    parent = parent.parentSession;
+  }
+  return false;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
