@@ -128,7 +128,7 @@ Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.m
 
 ## 版本与发布状态
 
-两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.8`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.11-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
+两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.9`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.12-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
 
 **版本历史只写在 `CHANGELOG.md`**，README 不再保留按版本编号的功能小节。发版后要同步四处：CHANGELOG 新增小节、两个 README 顶部的当前版本行、本节的版本号、以及 `plugin.xml` 的 change notes（JetBrains 上传后只有兼容范围可改，change notes 必须上传前定稿）。`python3 scripts/verify-docs.py` 会核对这四处与两个版本源是否一致，不一致直接报错。
 

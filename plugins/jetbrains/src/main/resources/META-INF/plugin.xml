@@ -1,5 +1,5 @@
 <idea-plugin url="https://github.com/Chengyunlai/code-cat">
-  <id>dev.codecat</id><name>Code Cat</name><version>0.2.11-preview</version>
+  <id>dev.codecat</id><name>Code Cat</name><version>0.2.12-preview</version>
   <vendor url="https://github.com/Chengyunlai/code-cat">Code Cat contributors</vendor>
   <description><![CDATA[
     <p>Explore Python, TypeScript, and JavaScript projects through an AI conversation connected to source code and real debugger pauses.</p>

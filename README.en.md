@@ -8,7 +8,7 @@
 
 Code Cat is an AI code-reading plugin for Python, TypeScript and JavaScript projects. Given one question, it locates the relevant code, lets you observe it at a real breakpoint, and keeps a conversation going with the AI: which statements are observed facts, which are source-based inferences, and how to verify the next step.
 
-Current versions: VS Code extension `0.2.8`, JetBrains preview plugin `0.2.11-preview`. Full release history is in [CHANGELOG.md](CHANGELOG.md).
+Current versions: VS Code extension `0.2.9`, JetBrains preview plugin `0.2.12-preview`. Full release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Contents
 
@@ -69,7 +69,7 @@ node examples/stage-02-node-conversation/user_code/main.js
 
 ### Guided exploration from purpose to pause
 
-The local `0.2.11-preview` starts code questions with the feature's purpose, responsibility and place in the project before following a focused source path. A debugger pause separates source-based clues from observed runtime facts and offers three editable follow-up prompts: role, mechanism and next verification. The user chooses when to send or step; missing variables and stack frames are never invented. Try the [Stage 05 checkout example](examples/stage-05-guided-depth/user_code/README.md). The Marketplace version `0.2.3-preview` predates these changes and also lacks the later retrieval, path-accumulation and request-liveness fixes; it only covers the 2025.1 line.
+The local `0.2.12-preview` starts code questions with the feature's purpose, responsibility and place in the project before following a focused source path. A debugger pause separates source-based clues from observed runtime facts and offers three editable follow-up prompts: role, mechanism and next verification. The user chooses when to send or step; missing variables and stack frames are never invented. Try the [Stage 05 checkout example](examples/stage-05-guided-depth/user_code/README.md). The Marketplace version `0.2.3-preview` predates these changes and also lacks the later retrieval, path-accumulation and request-liveness fixes; it only covers the 2025.1 line.
 
 A compact code-organization diagram sits beside the route answer. It groups only source files located for this exploration by directory, labels each file with the module's responsibility (falling back to the stop title when the model did not provide one), and opens source when clicked. Its connectors mean containment, never calls or runtime execution.
 
@@ -168,7 +168,7 @@ The default option is **VS Code built-in model**, which uses the VS Code Languag
 
 ### JetBrains preview
 
-The free JetBrains preview is public on the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34438-code-cat); the published version `0.2.3-preview` only supports the 2025.1 line. The newest local build is `0.2.11-preview`, which detects the Node.js runtime automatically; follow the [JetBrains guide](plugins/jetbrains/README.md) to install it from disk and try the latest changes. Release and update procedures live in [MARKETPLACE.md](plugins/jetbrains/MARKETPLACE.md), and the privacy notice in [PRIVACY.md](plugins/jetbrains/PRIVACY.md).
+The free JetBrains preview is public on the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34438-code-cat); the published version `0.2.3-preview` only supports the 2025.1 line. The newest local build is `0.2.12-preview`, which detects the Node.js runtime automatically; follow the [JetBrains guide](plugins/jetbrains/README.md) to install it from disk and try the latest changes. Release and update procedures live in [MARKETPLACE.md](plugins/jetbrains/MARKETPLACE.md), and the privacy notice in [PRIVACY.md](plugins/jetbrains/PRIVACY.md).
 
 PyCharm 2026.1 has a separate local build; plugin loading and JCEF host creation are verified, while Python breakpoints remain untested. JetBrains variable capture and full call stacks are not implemented yet.
 

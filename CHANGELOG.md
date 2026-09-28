@@ -6,8 +6,8 @@
 
 | 版本线 | 版本号唯一来源 | 当前版本 |
 | --- | --- | --- |
-| VS Code 扩展 | `package.json` 的 `version` | `0.2.8` |
-| JetBrains 预览插件 | `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>` | `0.2.11-preview` |
+| VS Code 扩展 | `package.json` 的 `version` | `0.2.9` |
+| JetBrains 预览插件 | `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>` | `0.2.12-preview` |
 
 下面以 **VS Code 版本**为主序列，每条记明对应的 JetBrains 预览包版本。JetBrains Marketplace 上的公开版本仍是 `0.2.3-preview`（只兼容 2025.1 系列）；编号更大的 JetBrains 版本都是本地预览包，按 [插件指南](plugins/jetbrains/README.md) 从磁盘安装。
 
@@ -20,6 +20,27 @@
 ## 未发布
 
 （暂无）
+
+## 0.2.9 — 2026-09-28
+
+JetBrains 预览包：`0.2.12-preview`
+
+### 变更
+
+- 扩展描述改为「A debug-driven AI code-reading tutor for Python, TypeScript and JavaScript projects in VS Code」，与 README 的定位一致。
+- JetBrains 预览包的插件描述与 change notes 重写。change notes 由原先 stage-05 之前的措辞改为相对已公开 `0.2.3-preview` 的六条变更清单：职责/关系与代码组织图、中文提问检索、路径累积、请求活性修复、自动发现 Node.js 与脱离 NodeJS 插件依赖、断点目标匹配。
+
+### 文档
+
+- 两个 README 重排为固定顺序（是什么/不是什么 → 快速开始 → 能力 → 安装 → 配置 → 使用 → 开发 → 结构 → 限制 → 贡献 → 许可），补目录与徽章，贡献者内容移出产品门面；修正英文版仍称 JetBrains 预览「尚未公开」、两文仍称「无独立测试与 CI」等过期表述。
+- 版本历史迁入本文件，README 不再保留按版本编号的功能小节。
+- 新增 `CONTRIBUTING.md`、`docs/README.md`、`docs/development.md`、`docs/roadmap.md`、`.editorconfig` 与 PR 模板。本仓库不使用 GitHub Issue 跟踪任务，因此不添加 `ISSUE_TEMPLATE`。
+- 新增文档自检 `scripts/verify-docs.py`，检查 `.github` 的 YAML、Markdown 内部链接、示例目录约定、末尾换行，以及各处版本号与两个版本源是否一致。
+
+### 构建与发版
+
+- 新增 `.github/workflows/docs.yml`，在 push 与 PR 上运行文档自检。
+- 打包不再包含贡献者文档（`CONTEXT.md`、`AGENTS.md`、`CONTRIBUTING.md`）。VSIX 从 117 文件 / 207.12 KB 变为 116 文件 / 202.46 KB，`extension/` 下只保留 `readme.md`、`README.en.md` 与 `changelog.md`。
 
 ## 0.2.8 — 2026-09-28
 

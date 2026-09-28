@@ -2,7 +2,7 @@
   "name": "code-cat",
   "displayName": "Code Cat",
   "description": "A debug-driven AI code-reading tutor for Python, TypeScript and JavaScript projects in VS Code.",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "publisher": "local",
   "license": "MIT",
   "repository": {
