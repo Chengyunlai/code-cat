@@ -1,5 +1,5 @@
 """Build against an installed IDE SDK, without changing its installation."""
-import os, pathlib, subprocess, shutil, zipfile, json
+import os, pathlib, subprocess, shutil, zipfile, json, re
 root=pathlib.Path(__file__).resolve().parents[1]
 ide=pathlib.Path(os.environ.get('CODE_CAT_JETBRAINS_HOME','/Applications/WebStorm.app/Contents'))
 product=json.loads((ide/'Resources/product-info.json').read_text())
@@ -35,7 +35,8 @@ with zipfile.ZipFile(plugin/'lib/code-cat.jar','w',zipfile.ZIP_DEFLATED) as jar:
   if p.is_file():jar.write(p,p.relative_to(classes))
 for name in ('core','engine'):
  shutil.copytree(root/f'packages/{name}/dist',plugin/f'packages/{name}/dist')
-archive=build_root/f'code-cat-jetbrains-0.2.7-preview-{target}.zip'
+version=re.search(r'<version>([^<]+)</version>',descriptor_text).group(1)
+archive=build_root/f'code-cat-jetbrains-{version}-{target}.zip'
 with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as output:
  for p in plugin.rglob('*'):
   if p.is_file():output.write(p,p.relative_to(build))

@@ -1,13 +1,13 @@
 # Code Cat · JetBrains 预览版
 
-> 免费预览版已提交 [JetBrains Marketplace 审核](https://plugins.jetbrains.com/plugin/34438-code-cat)，目前尚未公开；审核通过前请继续使用下文的本地安装方法。发布资料见 [MARKETPLACE.md](MARKETPLACE.md)，隐私与模型请求范围见 [PRIVACY.md](PRIVACY.md)。
+> 免费预览版已在 [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34438-code-cat) 公开，线上版本为 `0.2.3-preview`，兼容范围只到 2025.1 系列（`251.*`）。下文的本地安装包更新，用它们体验最新改动。发布与更新流程见 [MARKETPLACE.md](MARKETPLACE.md)，隐私与模型请求范围见 [PRIVACY.md](PRIVACY.md)。
 
 一个共享核心，两种 IDE 宿主：JetBrains 负责文件跳转、断点、真实暂停和密码库；本地 Node 进程负责 AI 协议、会话和教学提示。两端使用相同的聊天界面。
 
 ## 安装与使用
 
 1. 在仓库执行 `npm ci`、`npm run build:jetbrains`。默认使用 macOS `/Applications/WebStorm.app/Contents` 的 SDK；要构建 PyCharm 2026.1 包，执行 `CODE_CAT_JETBRAINS_HOME=/Applications/PyCharm.app/Contents npm run build:jetbrains`。构建需要该 IDE 自带的 JDK 21、Node.js 20+ 和 Python 3。
-2. 在对应 IDE 的 Settings → Plugins → 齿轮 → Install Plugin from Disk 中选择 `build/code-cat-jetbrains-0.2.7-preview-webstorm-251.zip` 或 `build/code-cat-jetbrains-0.2.7-preview-pycharm-261.zip`，重启 IDE。PyCharm 2026.1（261）不能安装旧的 251 包。两个包均为本地测试版；Marketplace 正在审核的仍是 `0.2.3-preview`。
+2. 在对应 IDE 的 Settings → Plugins → 齿轮 → Install Plugin from Disk 中选择 `build/code-cat-jetbrains-0.2.8-preview-webstorm-251.zip` 或 `build/code-cat-jetbrains-0.2.8-preview-pycharm-261.zip`，重启 IDE。PyCharm 2026.1（261）不能安装 251 包。Marketplace 上的公开版本仍是 `0.2.3-preview`（仅 251）。
 3. 打开项目与 Code Cat 工具窗口。在“更多 → 配置模型”填写协议、Base URL、模型名与 API Key。插件会自动查找 Node.js 20+，包括 PATH、常见 macOS 安装位置和 NVM 版本目录；自定义安装位置可通过 `CODECAT_NODE` 指定。密钥保存至 JetBrains PasswordSafe，不写进项目或会话历史。
 4. 直接提问以理解项目；已有运行配置时，点击回答中的“进入调试”设置断点并启动所选配置。暂停后可继续提问、跳转源码、单步和继续运行。会话标题可打开历史或新建会话。
 

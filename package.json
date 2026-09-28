@@ -2,7 +2,7 @@
   "name": "code-cat",
   "displayName": "Code Cat",
   "description": "A debug-driven AI tutor for understanding Python, TypeScript and JavaScript in VS Code.",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publisher": "local",
   "license": "MIT",
   "repository": {
@@ -295,6 +295,7 @@
     "package": "npm run compile && vsce package --no-dependencies --allow-missing-repository",
     "test:engine": "npm run compile && node examples/stage-04-shared-core/user_code/main.cjs && node test/engine/index.cjs && node test/engine/retrieval.cjs",
     "build:jetbrains": "npm run compile && python3 scripts/build-jetbrains.py",
+    "publish:jetbrains": "python3 scripts/publish-jetbrains.py",
     "smoke:jetbrains": "npm run compile && python3 scripts/run-jetbrains-smoke.py"
   },
   "devDependencies": {
