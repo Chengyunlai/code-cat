@@ -8,8 +8,18 @@ const http=require('node:http');
 (async()=>{
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'codecat-engine-'));
  const source=path.join(temp,'stock.ts');await fs.writeFile(source,'const stock = 8;\nconsole.log(stock);\n');
+ let expansionRequests=0;
  const server=http.createServer(async(req,res)=>{
-  let raw='';for await(const c of req)raw+=c;const request=JSON.parse(raw);assert.equal(request.stream,true);
+  let raw='';for await(const c of req)raw+=c;const request=JSON.parse(raw);
+  if(!request.stream){
+   // 检索词扩展是唯一允许的非流式调用：它的输出不进入界面，只用于给符号打分。
+   assert.match(raw,/Extract code search terms/u,'only retrieval-term expansion may skip streaming');
+   expansionRequests+=1;
+   res.writeHead(200,{'Content-Type':'application/json'});
+   // 故意返回无法解析的内容：扩展词拿不到时必须降级为空词集检索，而不是让整次提问失败。
+   res.end(JSON.stringify({choices:[{message:{content:'not-json'}}]}));
+   return;
+  }
   res.writeHead(200,{'Content-Type':'text/event-stream'});
   const text=raw.includes('文件怎么组织')
     ? JSON.stringify({kind:'route',summary:'库存示例的入口文件负责展示当前库存。',nodes:[{title:'读取库存',file:'stock.ts',line:2,reason:'观察输出位置',confidence:'high'}]})
@@ -27,6 +37,7 @@ const http=require('node:http');
   send({type:'askQuestion',question:'这个 TypeScript 项目的库存代码如何理解？'});
   await until(e=>e.method==='view'&&e.params.state.streamingAnswer?.text);
   await until(e=>e.method==='view'&&!e.params.state.requestPending&&e.params.state.chatMessages.some(m=>m.role==='assistant'));
+  assert.equal(expansionRequests,0,'a question that already names a code identifier must not spend an extra model call');
   send({type:'askQuestion',question:'这个项目的文件怎么组织？'});
   const organized=await until(e=>e.method==='view'&&e.params.state.organizationFiles?.length===1);
   assert.equal(organized.params.state.organizationFiles[0].fileLabel,'stock.ts');
@@ -44,6 +55,7 @@ const http=require('node:http');
   await until(e=>e.method==='view'&&e.params.state.tutorMessage?.text?.includes('停止'));
   child.stdin.end();await new Promise(r=>child.once('exit',r));
   const saved=await fs.readFile(path.join(temp,'state.json'),'utf8');assert.ok(!saved.includes('test-secret'));
-  console.log('Engine passed: streaming, pause projection, live-only controls, traversal rejection, cancellation and persistence without credentials.');
+  assert.ok(expansionRequests>0,'a Chinese-only question must expand retrieval terms before searching');
+  console.log(`Engine passed: streaming, pause projection, live-only controls, traversal rejection, cancellation, Chinese retrieval expansion (${expansionRequests}) and persistence without credentials.`);
  }finally{child.kill();server.closeAllConnections();server.close();await fs.rm(temp,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

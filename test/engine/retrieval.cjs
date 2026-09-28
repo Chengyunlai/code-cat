@@ -3,6 +3,7 @@ const fs=require('node:fs/promises');
 const os=require('node:os');
 const path=require('node:path');
 const {FileProject}=require('../../packages/engine/dist/project');
+const {extractRetrievalTerms}=require('../../packages/core/dist/project/retrievalTerms');
 (async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'codecat-retrieval-'));
  try{
@@ -17,6 +18,25 @@ const {FileProject}=require('../../packages/engine/dist/project');
   assert.ok(result.includes('implementationEvidence'));
   assert.ok(result.indexOf('src/definition.ts:\n') < result.indexOf('examples/usage-0.ts:\n'));
   assert.ok(result.includes('NOT proof'));
-  console.log('Retrieval passed: local package identity, exact declaration before 8 examples, body beyond line 160, partial coverage notice.');
  }finally{await fs.rm(root,{recursive:true,force:true});}
+
+ assert.deepEqual(extractRetrievalTerms('权限是怎么检查的'),[],'Chinese-only text yields no retrieval terms');
+ assert.deepEqual(extractRetrievalTerms('authorize 在哪里'),['authorize'],'an identifier already in the question is used as-is');
+ assert.deepEqual(extractRetrievalTerms('权限是怎么检查的',['authorize','permission']),['authorize','permission'],'expanded hints become retrieval terms');
+ assert.deepEqual(extractRetrievalTerms('权限',['检查权限','authorize']),['authorize'],'hints that are not identifiers are discarded');
+
+ const chinese=await fs.mkdtemp(path.join(os.tmpdir(),'codecat-retrieval-zh-'));
+ try{
+  await fs.mkdir(path.join(chinese,'src'),{recursive:true});
+  for(const name of ['aaa','bbb','ccc','ddd','eee'])
+   await fs.writeFile(path.join(chinese,`src/${name}.ts`),`export function render${name.toUpperCase()}() {\n  return "${name}";\n}\n`);
+  await fs.writeFile(path.join(chinese,'src/zzz-authorize.ts'),'export function authorize(request: Request) {\n  const permission = "admin";\n  return permission;\n}\n');
+  const project=new FileProject(chinese);
+  const question='权限是怎么检查的';
+  const withoutHints=await project.promptContext(question);
+  assert.ok(!withoutHints.includes('src/zzz-authorize.ts:\n'),'a Chinese-only question with no terms falls back to path order and misses the relevant file');
+  const withHints=await project.promptContext(question,['authorize']);
+  assert.ok(withHints.includes('src/zzz-authorize.ts:\n'),'expanded terms pull the relevant file into the excerpts');
+ }finally{await fs.rm(chinese,{recursive:true,force:true});}
+ console.log('Retrieval passed: local package identity, exact declaration before 8 examples, body beyond line 160, partial coverage notice, Chinese-only question reaching the relevant file through expanded terms.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

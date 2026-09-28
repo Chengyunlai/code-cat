@@ -85,3 +85,13 @@ Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.m
 ## 0.2.3 远程同步记录
 
 用户已授权提交并同步到 origin/main。实现提交：`7507e80b6d02eb62d385ad238ced41c1167973ad`，标题：`feat(ide): 共享代码阅读核心并接入 JetBrains 调试预览版`。本次记录覆盖 Stage 02–04 与 0.2.1–0.2.3 修复；前文“未提交/未推送”描述的是当时验证状态。提交前再次执行 npm run check 与 git diff --check，通过。安装包、依赖和测试沙箱为构建产物，不纳入 Git；构建与复现入口已随源码同步。
+
+## Stage 06 · 检索与暂停绑定
+
+`extractRetrievalTerms`（`packages/core/src/project/retrievalTerms.ts`）是两端共用的检索词提取规则，只认拉丁标识符。中文提问返回空数组是「需要扩展」的信号，不是失败；此前两端各写一份同样的正则，规则容易漂移。
+
+`AiTutor.retrievalHints` 只在问题提不出标识符时才调用模型生成候选标识符——已经带 `authorize`、`CheckoutService` 这类词的问题一次调用都不多花。候选词仅参与符号打分，命中真实符号才加分，因此不会凭空产生文件。该调用是非流式的，输出不进入界面。`ProjectContext.promptContext(question, hints)` 增加可选参数，两个宿主同步支持；省略时行为与之前一致。
+
+`answerPauseQuestion` 现在同时携带项目检索结果，让暂停之后的设计类问题能引用现场之外的代码。提示词要求把「已观察」的现场证据与「源码推断」的检索结果分开陈述，`Do not create a new reading route` 保留不变，追问不会突然弹出一条新路线。
+
+扩展调用失败或超时退回空词集检索，不阻塞回答。示例与验证见 `examples/stage-06-retrieval-and-pause-binding/` 与 `docs/implementation/stage-06-retrieval-and-pause-binding.md`。

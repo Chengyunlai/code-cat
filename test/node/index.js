@@ -32,6 +32,8 @@ exports.run = async () => {
   const originalRequest = ModelProviderService.prototype.request;
   try {
     ModelProviderService.prototype.request = async function(prompt) {
+      // 检索词扩展是提问链路的前置步骤，不是问答请求本身。
+      if (prompt.includes('Extract code search terms')) return JSON.stringify({terms: []});
       assert.match(prompt, /main\.ts/);
       assert.match(prompt, /reserveInventory/);
       return JSON.stringify({kind: 'project_chat', message: '项目验证库存是否足够。'});
@@ -72,6 +74,7 @@ exports.run = async () => {
       assert.ok(state.chatMessages.some(m => m.observation));
       try {
         ModelProviderService.prototype.request = async function(prompt) {
+          if (prompt.includes('Extract code search terms')) return JSON.stringify({terms: []});
           assert.match(prompt, /available/);
           assert.match(prompt, /stock/);
           return JSON.stringify({message: '已观察：库存为 8，需求为 10。'});

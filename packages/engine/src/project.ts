@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { extractRetrievalTerms } from "../../core/dist";
 import type { ProjectContext, SourceDocument } from "../../core/dist";
 const sourceFile = /\.(py|[cm]?[jt]s|[jt]sx)$/iu;
 const excluded = new Set([".git", ".idea", ".vscode", ".venv", "node_modules", "dist", "build", "__pycache__"]);
@@ -45,10 +46,10 @@ export class FileProject implements ProjectContext {
     return {languageId: file.endsWith(".py") ? "python" : "typescript", lineCount:lines.length,
       lineAt: index => ({text:lines[index] ?? ""})};
   }
-  async promptContext(question: string): Promise<string> {
+  async promptContext(question: string, hints?: readonly string[]): Promise<string> {
     const scanned = await this.files();
     const files = scanned.slice(0,2000);
-    const terms: string[] = question.toLowerCase().match(/[a-z_][a-z0-9_]{2,}/gu) ?? [];
+    const terms = extractRetrievalTerms(question, hints);
     const rows: {text:string;score:number}[] = [];
     const packages=new Map<string,string>();
     const directories=new Set<string>([this.root]);

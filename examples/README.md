@@ -12,5 +12,6 @@
 
 - [Stage 04：共享核心与 IDE 宿主](stage-04-shared-core/README.md)：普通 Node 调用公开会话 API，以及 WebStorm TS 真断点验证入口；PyCharm 261 安装包、Node 自动发现与验证边界见 [插件指南](../plugins/jetbrains/README.md)。
 - [Stage 05：从作用进入调试现场](stage-05-guided-depth/README.md)：结账路径先建立高层理解，再围绕真实暂停追问与验证。
+- [Stage 06：中文提问也能命中相关代码](stage-06-retrieval-and-pause-binding/README.md)：检索词提取与扩展，以及暂停追问携带项目检索。
 
 JetBrains 免费预览版已[提交 Marketplace 审核](https://plugins.jetbrains.com/plugin/34438-code-cat)，安装与审核状态见 [插件指南](../plugins/jetbrains/README.md)；示例运行方式不因发布渠道改变。

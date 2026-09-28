@@ -9,4 +9,5 @@ export * from "./ai/streamingText";
 export * from "./ai/aiTutor";
 export * from "./debug/runtimeEvidence";
 export * from "./project/pythonBreakpointLines";
+export * from "./project/retrievalTerms";
 export * from "./ports";

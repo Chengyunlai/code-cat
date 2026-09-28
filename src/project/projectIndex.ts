@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { extractRetrievalTerms } from "../../packages/core/dist/project/retrievalTerms";
 
 export interface ProjectSymbol {
   readonly file: string;
@@ -115,9 +116,9 @@ export class ProjectIndex implements vscode.Disposable {
     return this.cachedSnapshot;
   }
 
-  public async promptContext(question: string): Promise<string> {
+  public async promptContext(question: string, hints?: readonly string[]): Promise<string> {
     const project = await this.snapshot();
-    const terms = tokenizeQuestion(question);
+    const terms = extractRetrievalTerms(question, hints);
     const chosen = selectPromptSymbols(project.symbols, terms);
     const fileList = project.files.slice(0, 400).join("\n");
     const symbolList = chosen
@@ -232,10 +233,6 @@ function parseWorkspaceRelativeSourcePath(
     return undefined;
   }
   return path.posix.normalize(slashPath) as WorkspaceRelativeSourcePath;
-}
-
-function tokenizeQuestion(question: string): readonly string[] {
-  return [...new Set(question.toLowerCase().match(/[a-z_][a-z0-9_]{2,}/gu) ?? [])];
 }
 
 function scoreSymbol(symbol: ProjectSymbol, terms: readonly string[]): number {

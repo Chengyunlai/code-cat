@@ -26,7 +26,14 @@ export interface SourceDocument {
 }
 export interface ProjectContext {
   readinessIssue(): Promise<{kind: "no-workspace" | "no-source-files"; message: string} | undefined>;
-  promptContext(question: string): Promise<string>;
+  /**
+   * 组装这次提问要交给模型的项目检索上下文。
+   *
+   * `hints` 是模型从非拉丁提问里扩展出的候选标识符，例如「权限是怎么检查的」→
+   * `authorize`、`permission`。它只参与符号打分：命中真实符号才加分，找不到就忽略，
+   * 不会凭空产生文件或路径。省略该参数时行为与加入扩展之前完全一致。
+   */
+  promptContext(question: string, hints?: readonly string[]): Promise<string>;
   resolveFile(candidate: string): Promise<string | undefined>;
   readSourceFile(path: string): Promise<SourceDocument>;
 }

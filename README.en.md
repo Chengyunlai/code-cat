@@ -16,6 +16,8 @@ The local `0.2.4-preview` starts code questions with the feature's purpose, resp
 
 A compact code-organization diagram sits beside the route answer. It groups only source files located for the current question by directory; clicking a file opens source. Its connectors mean containment, never calls or runtime execution.
 
+Questions may be written in Chinese. Retrieval first turns the Chinese intent into candidate code identifiers, then validates them against real symbols in the project; a candidate that matches nothing scores zero and never invents a file. A question that already names an identifier costs no extra model call. After a pause, design questions are answered with project retrieval alongside the original observation, and the observation itself stays in context.
+
 ## 0.2.0: shared core and JetBrains preview
 
 The free JetBrains preview has been [submitted to Marketplace for review](https://plugins.jetbrains.com/plugin/34438-code-cat) and is not public yet. Until approval, follow the [local installation guide](plugins/jetbrains/README.md); check the Marketplace page for current availability.

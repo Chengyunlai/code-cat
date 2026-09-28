@@ -10,7 +10,7 @@ export class AiTutor extends CoreTutor {
   constructor(index: ProjectIndex, provider: ModelProviderService) {
     super({
       readinessIssue: () => index.readinessIssue(),
-      promptContext: question => index.promptContext(question),
+      promptContext: (question, hints) => index.promptContext(question, hints),
       resolveFile: candidate => index.resolveFile(candidate),
       readSourceFile: async file => await vscode.workspace.openTextDocument(file),
     }, provider);

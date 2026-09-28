@@ -915,6 +915,8 @@ async function testPauseConversationCommands() {
   let lateStream;
   try {
     ModelProviderService.prototype.request = async function(prompt) {
+      // 检索词扩展是提问链路的前置步骤，它的提示词不是问答提示词，不进入断言序列。
+      if (prompt.includes("Extract code search terms")) return JSON.stringify({ terms: [] });
       prompts.push(prompt);
       return JSON.stringify({ message: "已观察到 MAX_TURNS 为 20；没有证据表明循环已经执行。" });
     };
@@ -926,6 +928,7 @@ async function testPauseConversationCommands() {
     await vscode.commands.executeCommand("codeCat.askProject", "那它现在已经执行了吗？");
     assert.match(prompts[1], /已观察到 MAX_TURNS 为 20/u, "follow-up includes prior evidence answer");
     ModelProviderService.prototype.request = async function(prompt, token, kind, onText) {
+      if (prompt.includes("Extract code search terms")) return JSON.stringify({ terms: [] });
       lateStream = onText;
       onText('{"message":"正在解释现场');
       return new Promise((resolve) => { finishCancelled = resolve; });
