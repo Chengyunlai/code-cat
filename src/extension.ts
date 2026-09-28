@@ -287,6 +287,8 @@ export function activate(context: vscode.ExtensionContext): void {
         conversationTitle: store.snapshot().conversationTitle,
         conversationHistoryCount: store.conversationSummaries().length,
         revealedRouteNodeCount: store.snapshot().revealedRouteNodeCount,
+        // 累积路径的断言需要看到站点本身：目标、每站由哪个问题带来。
+        route: store.snapshot().route,
         lastPauseFrameCount: store.selectedPause()?.frames.length ?? 0,
         lastPauseTopFramePath: store.selectedPause()?.frames[0]?.location?.path,
         lastPauseTopFrameLine: store.selectedPause()?.frames[0]?.location?.line,
@@ -319,6 +321,9 @@ export function activate(context: vscode.ExtensionContext): void {
       ),
       vscode.commands.registerCommand("codeCat.__revealNextRouteNode", () =>
         store.revealNextRouteNode(),
+      ),
+      vscode.commands.registerCommand("codeCat.__startNewGoal", () =>
+        store.startNewGoal(),
       ),
       vscode.commands.registerCommand("codeCat.__modelProviderStatus", () =>
         modelProvider.status(),
@@ -430,6 +435,7 @@ export function activate(context: vscode.ExtensionContext): void {
           replaceReadingRoute(store, breakpoints, {
             question: "库存预留发生在哪里？",
             summary: "从结账入口观察库存预留调用。",
+            goal: "结账如何预留库存",
             nodes: [
               {
                 id: "source-guidance-smoke",
@@ -448,6 +454,30 @@ export function activate(context: vscode.ExtensionContext): void {
                 reason: "只有用户选择继续探索后，才揭示库存结果如何影响后续结账流程。",
                 relation: "承接上一步的库存结论，决定结账是否继续",
                 confidence: "medium",
+              },
+            ],
+          });
+        },
+      ),
+      vscode.commands.registerCommand(
+        "codeCat.__seedRouteFollowUp",
+        (location: unknown) => {
+          if (!isSourceLocation(location)) {
+            return;
+          }
+          // 模拟同一目标下的追问：只带回一站，而且这一站不在已有路径上。
+          // 刻意不带 goal，用来验证「模型没给目标时沿用当前目标」。
+          store.setRoute({
+            question: "库存不足时会走到哪一行？",
+            summary: "接着库存预留，看不足时落到哪个分支。",
+            nodes: [
+              {
+                id: "source-guidance-follow-up",
+                title: "库存不足的分支",
+                location: { ...location, line: location.line + 3 },
+                reason: "库存不足时在这里改变结账走向。",
+                relation: "承接库存预留的判定结果",
+                confidence: "high",
               },
             ],
           });
@@ -544,11 +574,13 @@ async function answerQuestion(
       store.completeQuestionWithAnswer(answer, pause);
       return;
     }
+    // 带上当前阅读路径：模型据此只返回本次新增的站点，摘要接着已有链路说。
     const result = await cancellable(tutor.answerQuestion(
       question,
       priorMessages,
       token,
       onText,
+      store.snapshot().route,
     ), token);
     if (result.kind === "chat") {
       store.completeQuestionWithAnswer(result.answer);
@@ -587,7 +619,7 @@ async function locateRoute(
         title: "Code Cat is locating the code path",
         cancellable: true,
       },
-      async (_progress, token) => tutor.locateRoute(question, token),
+      async (_progress, token) => tutor.locateRoute(question, token, store.snapshot().route),
     );
     replaceReadingRoute(store, breakpoints, route);
     await vscode.commands.executeCommand("workbench.view.extension.codeCat");

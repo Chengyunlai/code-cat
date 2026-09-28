@@ -39,13 +39,26 @@ export interface RouteNode {
   readonly role?: string;
   /** 与上一个阅读节点的关系：调用方向、数据来源或跨越的边界。首个节点不填。 */
   readonly relation?: string;
+  /**
+   * 带来这一站的那次提问。路径累积后，界面用它标出「本次新增」。
+   * 第一条路径上的站点不填——那批站点不是「新增」，而是起点。
+   */
+  readonly addedByQuestion?: string;
   readonly confidence: "high" | "medium" | "low";
 }
 
 export interface RoutePlan {
+  /** 最近一次提问。历史消息靠它把回答和路径对应起来。 */
   readonly question: string;
   readonly summary: string;
   readonly nodes: readonly RouteNode[];
+  /** 学习者当前正在理解的那个功能，一句话。路径围绕它累积。 */
+  readonly goal?: string;
+  /**
+   * 模型认为这次提问已经换了一个功能，建议改目标。非空时界面给出「开始新的探索目标」入口；
+   * 在用户选择之前，已有站点必须原样保留。
+   */
+  readonly pendingGoal?: string;
 }
 
 export interface PauseExplanation {

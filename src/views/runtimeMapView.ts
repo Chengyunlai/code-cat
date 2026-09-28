@@ -485,6 +485,9 @@ export class RuntimeMapView implements vscode.WebviewViewProvider, vscode.Dispos
       case "revealNextRouteNode":
         this.store.revealNextRouteNode();
         return;
+      case "startNewGoal":
+        this.store.startNewGoal();
+        return;
       case "copyCode":
         if (typeof value.code === "string" && value.code.length <= 20000) await vscode.env.clipboard.writeText(value.code);
         return;

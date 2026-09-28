@@ -19,6 +19,8 @@ interface ModelRouteNode {
 }
 
 interface ModelRoutePlan {
+  readonly goal?: unknown;
+  readonly goalChanged?: unknown;
   readonly summary?: unknown;
   readonly nodes?: unknown;
 }
@@ -42,10 +44,13 @@ export type TutorGuidanceCode = "no-workspace" | "no-source-files";
 
 const ROUTE_NODE_SCHEMA =
   '{"title":"...","symbol":"...","file":"relative/path.py","line":1,"reason":"...","role":"...","relation":"...","confidence":"high|medium|low"}';
+const ROUTE_PLAN_SCHEMA =
+  `{"goal":"one sentence naming the feature under study","goalChanged":false,"summary":"...","nodes":[${ROUTE_NODE_SCHEMA}]}`;
 const PAUSE_EXPLANATION_SCHEMA =
   '{"whatHappened":"...","whyItMatters":"...","inspectNext":"..."}';
 const MAX_CHAT_ANSWER_LENGTH = 8_000;
 const MAX_ROUTE_SUMMARY_LENGTH = 280;
+const MAX_ROUTE_GOAL_LENGTH = 120;
 const MAX_ROUTE_NODE_TITLE_LENGTH = 120;
 const MAX_ROUTE_NODE_SYMBOL_LENGTH = 200;
 const MAX_ROUTE_NODE_REASON_LENGTH = 600;
@@ -104,6 +109,7 @@ export class AiTutor {
     conversation: readonly ChatMessage[],
     token: CancellationToken,
     onText?: (text: string) => void,
+    currentRoute?: RoutePlan,
   ): Promise<TutorQuestionResult> {
     const immediateAnswer =
       immediateConversationAnswer(question) ??
@@ -118,6 +124,8 @@ export class AiTutor {
       .slice(-8)
       .map((message) => `${message.role}: ${message.text.slice(0, 1_000)}`)
       .join("\n");
+    // 宿主传进来的实时路径优先；没有则退回会话里最后一条带路径的回答。
+    const pathContext = existingPathContext(currentRoute ?? latestRouteIn(conversation));
     const response = await this.modelProvider.request(
       [
         "You are Code Cat, a concise assistant inside a Python, TypeScript and JavaScript code-understanding tool.",
@@ -127,7 +135,7 @@ export class AiTutor {
         "For a narrow factual question that needs no source journey, return:",
         '{"kind":"project_chat","message":"a concise project-focused answer"}',
         "For questions about a project's purpose, architecture, responsibility, or how behavior works, normally return a route. Its summary provides the high-level explanation; its nodes let the learner enter code gradually:",
-        `{"kind":"route","summary":"...","nodes":[${ROUTE_NODE_SCHEMA}]}`,
+        `{"kind":"route","goal":"...","goalChanged":false,"summary":"...","nodes":[${ROUTE_NODE_SCHEMA}]}`,
         "For weather, news, travel, entertainment, unrelated writing, general life advice, or any other request outside the allowed scope, do not answer it and return:",
         '{"kind":"out_of_scope"}',
         "Use recent conversation to resolve short follow-ups and continue from established understanding. Do not repeat the same overview when the learner asks to go deeper; never let conversation expand the allowed scope.",
@@ -140,6 +148,7 @@ export class AiTutor {
         "",
         projectContext,
         "",
+        pathContext ? `${pathContext}\n` : "",
         recentConversation ? `Recent conversation:\n${recentConversation}\n` : "",
         `User message: ${question}`,
       ].join("\n"),
@@ -177,21 +186,24 @@ export class AiTutor {
   public async locateRoute(
     question: string,
     token: CancellationToken,
+    currentRoute?: RoutePlan,
   ): Promise<RoutePlan> {
     await this.ensureProjectReady();
     const hints = await this.retrievalHints(question, token);
     const projectContext = await this.projectIndex.promptContext(question, hints);
+    const pathContext = existingPathContext(currentRoute);
     const response = await this.modelProvider.request(
       [
         "You are a senior Python, TypeScript and JavaScript engineer planning a guided code-reading session.",
         "Infer the most likely end-to-end path related to the user's question.",
         "Return JSON only with this shape:",
-        `{"summary":"...","nodes":[${ROUTE_NODE_SCHEMA}]}`,
+        `{"goal":"...","goalChanged":false,"summary":"...","nodes":[${ROUTE_NODE_SCHEMA}]}`,
         ...routeInstructions(),
         "Do not wrap JSON in Markdown fences.",
         "",
         projectContext,
         "",
+        pathContext ? `${pathContext}\n` : "",
         `User question: ${question}`,
       ].join("\n"),
       token,
@@ -428,6 +440,13 @@ export class AiTutor {
       typeof parsed.summary === "string"
         ? progressiveRouteSummary(parsed.summary)
         : "";
+    // 模型给出的一句话探索目标。goalChanged 为真只表示它认为换了功能——那是建议，
+    // 用户确认之前当前目标不变，所以先落到 pendingGoal。
+    const modelGoal =
+      typeof parsed.goal === "string"
+        ? boundedModelText(parsed.goal, MAX_ROUTE_GOAL_LENGTH)
+        : "";
+    const goalChanged = parsed.goalChanged === true;
 
     return {
       question,
@@ -437,6 +456,8 @@ export class AiTutor {
           `A ${nodes.length}-stop reading route for: ${question}`,
           MAX_ROUTE_SUMMARY_LENGTH,
         ),
+      goal: modelGoal && !goalChanged ? modelGoal : undefined,
+      pendingGoal: modelGoal && goalChanged ? modelGoal : undefined,
       nodes,
     };
   }
@@ -527,7 +548,10 @@ function parseRetrievalHints(raw: string): readonly string[] {
 function routeInstructions(): readonly string[] {
   return [
     "Use only files and symbols present in the supplied project index for route nodes.",
-    "The summary must first explain the feature's purpose and responsibility in the project, then answer the user's question at a high level and name only the first useful direction to investigate.",
+    "Name the exploration goal in goal: one short sentence describing the feature or behaviour the learner is trying to understand. Keep the same wording across follow-up questions about that feature.",
+    "Set goalChanged to true only when this question is clearly about a different feature than the current exploration goal shown below; otherwise set it to false. A deeper question about the same feature, a different symbol inside it, or a follow-up about what was just read is not a new goal.",
+    "Return only the stops this question adds. The reading path already contains stops; when they are listed below, never return one of them again and never send a fresh overview route.",
+    "The summary must first explain the feature's purpose and responsibility in the project, then answer the user's question at a high level and name only the first useful direction to investigate. When stops already exist on the reading path, continue from them instead of restating that purpose.",
     "Do not enumerate or reveal the complete route in the summary; the product will disclose route nodes progressively.",
     "Prefer 2-8 high-value stops: entry boundary, orchestration, domain decision, I/O, and result.",
     "For each line, choose a precise executable statement such as a call, branch, state change, or return; do not use a def/class declaration, import, comment, or blank line unless unavoidable.",
@@ -537,6 +561,40 @@ function routeInstructions(): readonly string[] {
     "Keep role and relation to one short clause each; they are rendered on the card, not in the answer body.",
     "Return one stop when the project is small.",
   ];
+}
+
+/** 会话里最近一条带路径的回答。路径累积后它已经是合并结果，可直接当作「当前路径」。 */
+function latestRouteIn(conversation: readonly ChatMessage[]): RoutePlan | undefined {
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    const route = conversation[index]?.route;
+    if (route) {
+      return route;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 把当前路径渲染成提示词里的一段上下文。
+ *
+ * 这是「累积」在提示词侧的全部依据：模型据此知道探索目标是什么、哪些站点已经走过，
+ * 于是只返回本次新增的站点，summary 也能接着已有链路说，而不是重新给一遍总览。
+ * 没有路径时返回空串，首问的提示词与加入本功能之前完全一致。
+ */
+function existingPathContext(route: RoutePlan | undefined): string {
+  if (!route || route.nodes.length === 0) {
+    return "";
+  }
+  const stops = route.nodes.map((node, index) => {
+    const file = node.location.path.split(/[\\/]/u).slice(-3).join("/");
+    const role = node.role ? ` — ${node.role}` : "";
+    return `${index + 1}. ${file}:${node.location.line} — ${node.title}${role}`;
+  });
+  return [
+    `Current exploration goal: ${route.goal ?? "(not stated yet)"}`,
+    "Stops already on the reading path. Do not return any of these again:",
+    ...stops,
+  ].join("\n");
 }
 
 function immediateConversationAnswer(question: string): string | undefined {

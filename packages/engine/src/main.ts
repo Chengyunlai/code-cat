@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     let last=0;
     const stream=(text:string)=>{ if (!controller.signal.aborted && Date.now()-last>70) {last=Date.now();store.streamAnswer(text,pause?.id);} };
     try {
-      const operation=pause?tutor.answerPauseQuestion(question,previous,pause,token,stream):tutor.answerQuestion(question,previous,token,stream);
+      const operation=pause?tutor.answerPauseQuestion(question,previous,pause,token,stream):tutor.answerQuestion(question,previous,token,stream,store.snapshot().route);
       const answer=await Promise.race([operation,new Promise<never>((_,reject)=>controller.signal.addEventListener("abort",()=>reject(new Error("回答已停止，可以继续提问。")),{once:true}))]);
       if (controller.signal.aborted) return;
       if (typeof answer==="string") store.completeQuestionWithAnswer(answer,pause);
@@ -141,6 +141,7 @@ async function main(): Promise<void> {
       }
       case "explain":await ask(message.question || "解释这次暂停，以及下一步如何验证。");return;
       case "revealNextRouteNode":store.revealNextRouteNode();return;
+      case "startNewGoal":store.startNewGoal();return;
       case "configureModel":host("configureModel");return;
       case "copyCode":if(typeof message.code==="string"&&message.code.length<=20000)host("copyCode",{code:message.code});return;
       case "showConversationHistory":host("history",{conversations:store.conversationSummaries()});return;

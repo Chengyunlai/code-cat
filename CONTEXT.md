@@ -29,8 +29,12 @@ One concrete code-understanding objective inside a conversation. It starts with 
 _Avoid_: Full analysis, route dump, debug session
 
 **Reading path**:
-An ordered hypothesis of useful source locations for one code exploration, revealed progressively. It guides reading but is not runtime evidence.
+An ordered hypothesis of useful source locations for one code exploration, revealed progressively. Follow-up questions on the same exploration goal append the stops they add; the path is never silently replaced. It guides reading but is not runtime evidence.
 _Avoid_: Call stack, complete answer, execution trace
+
+**Exploration goal**:
+One sentence naming the feature or behaviour the learner is currently trying to understand. A reading path accumulates around it; a suggested change of goal needs the learner's confirmation before the path is narrowed to the new goal.
+_Avoid_: Conversation title, question text, topic label
 
 **Debug evidence**:
 The call stack and bounded variables captured from a real debugger pause after the learner chooses a breakpoint. It is runtime evidence, not part of the planned reading path.
@@ -95,6 +99,18 @@ Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.m
 `answerPauseQuestion` 现在同时携带项目检索结果，让暂停之后的设计类问题能引用现场之外的代码。提示词要求把「已观察」的现场证据与「源码推断」的检索结果分开陈述，`Do not create a new reading route` 保留不变，追问不会突然弹出一条新路线。
 
 扩展调用失败或超时退回空词集检索，不阻塞回答。示例与验证见 `examples/stage-06-retrieval-and-pause-binding/` 与 `docs/implementation/stage-06-retrieval-and-pause-binding.md`。
+
+## Stage 07 · 探索连续
+
+阅读路径现在围绕一个**探索目标**累积。合并逻辑只有一处：`packages/core/src/core/sessionStore.ts` 的 `accumulateRoute`，由 `applyRoute` 调用；两端宿主只投影结果。站点身份按「文件 + 行」判定，重复站点不追加；新增站点打上 `addedByQuestion`，第一条路径上的站点不打标记。`revealedRouteNodeCount` 从「固定为 1」改为 `min(总站数, max(1, 原值) + 新增数)`，已展开的站点保持展开，本次新增的直接可见。`applyRoute` 不再重置 `pauses` / `selectedPauseId` / `selectedFrameId`：结束调试后再提问，之前采集的暂停仍属于同一个上下文。
+
+`RoutePlan.goal` 是当前正在理解的功能，`pendingGoal` 是模型建议的新目标。模型认为换了功能时只写 `pendingGoal`，界面给一个「开始新的探索目标」入口，由 `SessionStore.startNewGoal()` 采纳，只保留 `addedByQuestion` 等于本次提问的站点；首条路径没有「上一个目标」，因此 `accumulateRoute` 会把误报的 `pendingGoal` 降级为 `goal`。两者都是可选字段，旧会话恢复后行为不变。
+
+提示词侧在 `packages/core/src/ai/aiTutor.ts`：`existingPathContext` 把当前目标与已有站点（压缩成「路径:行 标题 职责」）拼进提示词，`routeInstructions` 要求只返回本次新增的站点、summary 接着已有链路说。`answerQuestion` 与 `locateRoute` 都新增了可选的「当前路径」参数，由宿主从 `store.snapshot().route` 传入；没有路径时这段上下文为空串，首问的提示词与加入本阶段之前完全一致。
+
+渲染侧在 `packages/ui/src/runtimeMapScript.ts`：`pathScaleLabel` 给出「路径共 N 站 · 本次新增 K 站」；`renderExplorationContext` 先渲染探索目标，多站时把「核心代码位置」改为「阅读路径起点」；断点邀请不再无条件出现，也不再泛泛地问「想通过断点看看这个过程吗」，而是由 `breakpointInvitationStop` 取当前已展开的最后一站（`confidence` 为 `low` 的猜测站跳过），指名第几站、哪个文件:行、能看到什么，按钮降为次级样式。
+
+示例与验证见 `examples/stage-07-exploration-continuity/` 与 `docs/implementation/stage-07-exploration-continuity.md`。
 
 ## 版本与发布状态
 

@@ -644,19 +644,19 @@ export const runtimeMapScript = String.raw`
       if (!groups.size) return;
       const section = document.createElement('section');
       section.className = 'architecture-map';
-      section.setAttribute('aria-label', '当前问题相关的代码组织');
+      section.setAttribute('aria-label', '本次探索相关的代码组织');
       const heading = document.createElement('div');
       heading.className = 'architecture-heading';
       const title = document.createElement('strong');
       title.textContent = '这部分代码在哪里';
       const detail = document.createElement('p');
-      detail.textContent = '只显示本问题已定位的文件；连线表示目录归属。文件下方是阅读线索，不表示调用或执行。';
+      detail.textContent = '只显示本次探索已定位的文件；连线表示目录归属。文件下方是阅读线索，不表示调用或执行。';
       heading.append(title, detail);
       const tree = document.createElement('div');
       tree.className = 'architecture-tree';
       const origin = document.createElement('div');
       origin.className = 'architecture-origin';
-      origin.textContent = '当前问题';
+      origin.textContent = '本次探索';
       tree.appendChild(origin);
       const branches = document.createElement('div');
       branches.className = 'architecture-branches';
@@ -913,13 +913,36 @@ export const runtimeMapScript = String.raw`
       if (!coreNode) return;
       const section = document.createElement('section');
       section.className = 'exploration-context';
+      // 先把全局讲清楚：这次在理解什么功能、路径上有几站、其中几站是本次新增。
+      // 只给一个「核心代码位置」时，用户不知道自己站在整条链路的哪个位置。
+      const goalText = route.goal || route.question;
+      if (goalText) {
+        const goal = document.createElement('div');
+        goal.className = 'exploration-goal';
+        const goalLabel = document.createElement('span');
+        goalLabel.className = 'exploration-goal-label';
+        goalLabel.textContent = '探索目标';
+        const goalCopy = document.createElement('span');
+        goalCopy.className = 'exploration-goal-text';
+        goalCopy.textContent = goalText;
+        const goalScale = document.createElement('span');
+        goalScale.className = 'exploration-goal-scale';
+        goalScale.textContent = pathScaleLabel(route);
+        goal.append(goalLabel, goalCopy, goalScale);
+        section.appendChild(goal);
+      }
+      // 模型认为这次提问换了功能：只提示，不静默替换已有路径。
+      if (route.pendingGoal) {
+        section.appendChild(pendingGoalNotice(route.pendingGoal));
+      }
       const core = document.createElement('div');
       core.className = 'core-location';
       const coreHeader = document.createElement('div');
       coreHeader.className = 'core-location-header';
       const label = document.createElement('span');
       label.className = 'core-location-label';
-      label.textContent = '核心代码位置';
+      // 路径累积后 nodes[0] 是整次探索的入口，不再是「本问题的核心位置」。
+      label.textContent = route.nodes.length > 1 ? '阅读路径起点' : '核心代码位置';
       const location = document.createElement('button');
       location.type = 'button';
       location.className = 'source-link core-location-link';
@@ -956,8 +979,8 @@ export const runtimeMapScript = String.raw`
       const debugDetail = document.createElement('p');
       const debugActions = document.createElement('div');
       debugActions.className = 'debug-invitation-actions';
-      const startGuidedDebugAction = (label) => {
-        const startDebug = actionButton(label, 'primary', () => {
+      const startGuidedDebugAction = (label, style = 'primary') => {
+        const startDebug = actionButton(label, style, () => {
           activeTab = 'overview';
           render(currentState);
           vscode.postMessage({ type: 'startDebug', question: route.question });
@@ -990,18 +1013,65 @@ export const runtimeMapScript = String.raw`
           debugActions.appendChild(startGuidedDebugAction('重新运行'));
         }
       } else {
-        debugTitle.textContent = '想通过断点看看这个过程吗？';
-        debugDetail.textContent =
-          'Code Cat 会先在 ' +
-          coreNode.fileLabel + ':' + coreNode.location.line +
-          ' 放置临时断点。命中后，路径图、调用栈和变量会同步更新。';
-        debugActions.appendChild(startGuidedDebugAction('用断点跟一遍'));
+        // 邀请只在本次探索还没跑过调试时出现，而且要指名「跑哪一站、能看到什么」。
+        // 泛泛地问「想通过断点看看这个过程吗」，会让每个问题看起来都必须去调试。
+        const stop = breakpointInvitationStop(route.nodes);
+        if (stop) {
+          debugTitle.textContent =
+            '想验证第 ' + (route.nodes.indexOf(stop) + 1) + ' 站的实际结果吗？';
+          debugDetail.textContent =
+            stop.fileLabel + ':' + stop.location.line + ' 是「' + stop.title +
+            '」。在那里暂停一次，就能看到它当时的真实取值和下一步走向。';
+          debugActions.appendChild(startGuidedDebugAction('用断点跟一遍', 'quiet'));
+        }
       }
-      debugCopy.append(debugTitle, debugDetail);
-      debugInvitation.append(debugCopy, debugActions);
-
-      section.append(core, debugInvitation);
+      if (debugTitle.textContent) {
+        debugCopy.append(debugTitle, debugDetail);
+        debugInvitation.append(debugCopy, debugActions);
+        section.append(core, debugInvitation);
+      } else {
+        section.append(core);
+      }
       root.appendChild(section);
+    }
+
+    /** 「共 N 站 · 本次新增 K 站」——累积路径的规模提示。 */
+    function pathScaleLabel(route) {
+      const total = route.totalNodeCount || route.nodes.length;
+      const added = route.nodes.filter((node) => node.addedByQuestion).length;
+      return added
+        ? '路径共 ' + total + ' 站 · 本次新增 ' + added + ' 站'
+        : '路径共 ' + total + ' 站';
+    }
+
+    /**
+     * 断点邀请指向当前已展开的最后一站：它一定是用户已经看到的位置，通常也是本次新增的落点。
+     * confidence 为 low 的站点是模型的猜测，不值得让用户花一次调试去验证，跳过。
+     */
+    function breakpointInvitationStop(nodes) {
+      for (let index = nodes.length - 1; index >= 0; index -= 1) {
+        if (nodes[index].confidence !== 'low') return nodes[index];
+      }
+      return undefined;
+    }
+
+    /** 换了目标的提示。只提供入口，是否切换由用户决定，已有站点原样保留。 */
+    function pendingGoalNotice(pendingGoal) {
+      const notice = document.createElement('div');
+      notice.className = 'goal-change';
+      const copy = document.createElement('p');
+      copy.className = 'goal-change-copy';
+      copy.textContent =
+        '这次提问看起来是另一个目标：' + pendingGoal + '。已读过的位置先保留，由你决定是否切换。';
+      const actions = document.createElement('div');
+      actions.className = 'goal-change-actions';
+      const accept = actionButton('开始新的探索目标', 'quiet', () => {
+        vscode.postMessage({ type: 'startNewGoal' });
+      });
+      accept.dataset.action = 'start-new-goal';
+      actions.appendChild(accept);
+      notice.append(copy, actions);
+      return notice;
     }
 
     function renderRichText(root, source) {
@@ -1237,6 +1307,14 @@ export const runtimeMapScript = String.raw`
       kicker.className = 'path-kicker';
       const stateLabel = node.focused ? '当前关注' : node.active ? '调用栈中' : node.executed ? '已执行' : '候选';
       kicker.innerHTML = '<span>' + stateLabel + '</span><span class="path-index">' + String(index + 1).padStart(2, '0') + '</span>';
+      // 累积路径里标出「哪个问题带来这一站」，用户才知道这次多看的是哪一段。
+      // 插在序号之前，序号靠 margin-left:auto 保持在右侧。
+      if (node.addedByQuestion) {
+        const fresh = document.createElement('span');
+        fresh.className = 'path-new';
+        fresh.textContent = '本次新增';
+        kicker.insertBefore(fresh, kicker.lastElementChild);
+      }
       const title = document.createElement('span');
       title.className = 'path-title';
       title.textContent = node.title;

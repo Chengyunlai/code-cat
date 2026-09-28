@@ -59,6 +59,7 @@ async function run() {
   await testRoutePreflight();
   testRuntimeEvidenceConstraints();
   await testConversationState();
+  await testExplorationContinuity();
   testQuestionTerminalStates();
   testObservationOwnership();
   await testHistoricalRoutes();
@@ -323,8 +324,8 @@ async function run() {
     );
     assert.match(
       progressiveOverview.runtimeMap.renderedDebugInvitationText,
-      /想通过断点看看这个过程吗[\s\S]*用断点跟一遍/u,
-      "guided debugging must be presented as a separate optional next step",
+      /想验证第 1 站的实际结果吗[\s\S]*用断点跟一遍/u,
+      "guided debugging must name the stop to verify instead of asking generically",
     );
     assert.equal(
       await vscode.commands.executeCommand("codeCat.__runCoreLocationSmoke"),
@@ -353,6 +354,42 @@ async function run() {
       "the path tab to reveal exactly one additional code location",
     );
     assert.equal(secondPathStep.runtimeMap.visibleTabCount, 2);
+    // 同一目标下的追问：已有站点保留，只把本次新增的站点追加到路径尾部。
+    await vscode.commands.executeCommand("codeCat.__seedRouteFollowUp", codeCatLocation);
+    const continuedPath = await waitForValue(
+      () => vscode.commands.executeCommand("codeCat.__smokeState"),
+      (state) =>
+        state?.route?.nodes.length === 3 &&
+        state.revealedRouteNodeCount === 3 &&
+        state.runtimeMap?.renderedRouteNodeCount === 3,
+      "a follow-up question to extend the existing reading path instead of replacing it",
+    );
+    assert.equal(
+      continuedPath.route.goal,
+      "结账如何预留库存",
+      "a follow-up without its own goal keeps the current exploration goal",
+    );
+    assert.equal(
+      continuedPath.route.nodes[0].title,
+      "预留库存",
+      "the first stop of the previous question stays on the path",
+    );
+    assert.equal(
+      continuedPath.route.nodes[2].addedByQuestion,
+      "库存不足时会走到哪一行？",
+      "each appended stop records which question added it",
+    );
+    assert.equal(
+      continuedPath.route.nodes[0].addedByQuestion,
+      undefined,
+      "stops from the original question are not marked as newly added",
+    );
+    assert.equal(continuedPath.route.pendingGoal, undefined);
+    assert.equal(
+      await vscode.commands.executeCommand("codeCat.__startNewGoal"),
+      false,
+      "a path without a suggested goal change is left untouched",
+    );
     const routeCodeLenses = await vscode.commands.executeCommand(
       "vscode.executeCodeLensProvider",
       checkoutUri,
@@ -360,7 +397,8 @@ async function run() {
     );
     const routeCodeLensTitles = routeCodeLenses.map((lens) => lens.command?.title);
     assert.ok(
-      routeCodeLensTitles.some((title) => title?.includes("Code Cat · 第 1/2 步")),
+      // 路径累积后 CodeLens 的步数跟着变长：第 1 站仍然是原来的起点，但它在 3 站的路径上。
+      routeCodeLensTitles.some((title) => title?.includes("Code Cat · 第 1/3 步")),
       "the route source line should expose its teaching context as CodeLens",
     );
     assert.ok(
@@ -861,7 +899,11 @@ async function testConversationState() {
     assert.equal(store.snapshot().conversationId, firstConversationId);
     assert.equal(store.snapshot().chatMessages.length, 10);
     assert.equal(store.snapshot().route.question, "支付失败会经过哪些函数？");
-    assert.equal(store.snapshot().revealedRouteNodeCount, 1);
+    // 路径累积：结账 2 站 + 支付 1 站；已展开数随新增一起推进，不再被重置为 1。
+    assert.equal(store.snapshot().route.nodes.length, 3);
+    assert.equal(store.snapshot().route.nodes[2].addedByQuestion, "支付失败会经过哪些函数？");
+    assert.equal(store.snapshot().route.nodes[0].addedByQuestion, undefined);
+    assert.equal(store.snapshot().revealedRouteNodeCount, 3);
 
     await store.whenPersisted();
     const restored = new SessionStore(workspaceState);
@@ -873,6 +915,106 @@ async function testConversationState() {
     } finally {
       restored.dispose();
     }
+  } finally {
+    store.dispose();
+  }
+}
+
+/**
+ * stage-07：阅读路径围绕一个探索目标累积。
+ * 同一目标下的追问只追加新站点；换目标必须先经过用户确认，绝不静默替换。
+ */
+async function testExplorationContinuity() {
+  const store = new SessionStore();
+  const stop = (id, title, path, line) => ({
+    id,
+    title,
+    location: { path, line, column: 1 },
+    reason: `${title} reason`,
+    confidence: "high",
+  });
+  try {
+    store.beginQuestion("结账请求经过哪些函数？");
+    store.completeQuestionWithRoute({
+      question: "结账请求经过哪些函数？",
+      summary: "结账从入口进入库存与支付流程。",
+      goal: "结账请求的处理链路",
+      nodes: [stop("first-stop", "Checkout", "/tmp/checkout.py", 1)],
+    });
+    assert.equal(store.snapshot().route.goal, "结账请求的处理链路");
+    assert.equal(store.snapshot().revealedRouteNodeCount, 1);
+
+    // 同一目标下追问：模型重复给出已有站点时不重复追加，只加新的那一站。
+    store.setRoute({
+      question: "库存不足时会走到哪一行？",
+      summary: "接着结账入口，看库存不足时的分支。",
+      nodes: [
+        stop("first-stop", "Checkout", "/tmp/checkout.py", 1),
+        stop("second-stop", "Insufficient stock", "/tmp/inventory.py", 9),
+      ],
+    });
+    assert.deepEqual(
+      store.snapshot().route.nodes.map((node) => node.id),
+      ["first-stop", "second-stop"],
+      "a stop already on the path is never appended twice",
+    );
+    assert.equal(
+      store.snapshot().route.nodes[1].addedByQuestion,
+      "库存不足时会走到哪一行？",
+      "an appended stop records which question added it",
+    );
+    assert.equal(
+      store.snapshot().route.goal,
+      "结账请求的处理链路",
+      "a follow-up without its own goal keeps the current exploration goal",
+    );
+    assert.equal(store.snapshot().revealedRouteNodeCount, 2);
+
+    // 换目标：先提示，用户确认后才收敛到新目标的站点。
+    assert.equal(store.startNewGoal(), false, "no suggested goal change means no reset");
+    store.setRoute({
+      question: "支付失败会走到哪个适配器？",
+      summary: "支付失败进入支付适配器。",
+      pendingGoal: "支付失败的处理链路",
+      nodes: [stop("payment-stop", "Payment adapter", "/tmp/payment.py", 3)],
+    });
+    assert.equal(
+      store.snapshot().route.goal,
+      "结账请求的处理链路",
+      "a pending goal change never replaces the current goal by itself",
+    );
+    assert.equal(store.snapshot().route.pendingGoal, "支付失败的处理链路");
+    assert.equal(
+      store.snapshot().route.nodes.length,
+      3,
+      "the newly added stops stay on the path until the user decides",
+    );
+    assert.equal(store.startNewGoal(), true);
+    assert.equal(store.snapshot().route.goal, "支付失败的处理链路");
+    assert.equal(store.snapshot().route.pendingGoal, undefined);
+    assert.deepEqual(
+      store.snapshot().route.nodes.map((node) => node.id),
+      ["payment-stop"],
+      "accepting the goal change drops the stops of the previous goal",
+    );
+    assert.equal(store.snapshot().revealedRouteNodeCount, 1);
+
+    // 首问没有「上一个目标」可切换：模型误报 goalChanged 时降级为普通目标。
+    store.clear();
+    store.beginQuestion("首次提问");
+    store.completeQuestionWithRoute({
+      question: "首次提问",
+      summary: "首次回答。",
+      pendingGoal: "首次探索目标",
+      nodes: [stop("first-goal-stop", "Entry", "/tmp/entry.py", 2)],
+    });
+    assert.equal(store.snapshot().route.goal, "首次探索目标");
+    assert.equal(
+      store.snapshot().route.pendingGoal,
+      undefined,
+      "the first path of a conversation has nothing to switch away from",
+    );
+    assert.equal(store.startNewGoal(), false);
   } finally {
     store.dispose();
   }

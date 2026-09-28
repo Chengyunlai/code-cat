@@ -407,6 +407,49 @@ export const runtimeMapStyles = String.raw`
       line-height: 1.6;
       text-wrap: pretty;
     }
+    .exploration-goal {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 10px;
+      margin-bottom: 16px;
+    }
+    .exploration-goal-label {
+      color: var(--cc-muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .exploration-goal-text {
+      max-width: 62ch;
+      font-size: 13px;
+      font-weight: 600;
+      text-wrap: pretty;
+    }
+    .exploration-goal-scale {
+      color: var(--cc-muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .goal-change {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+      padding: 10px 12px;
+      border: 1px solid var(--cc-border);
+      border-radius: var(--cc-radius);
+      background: var(--cc-accent-wash);
+    }
+    .goal-change-copy {
+      min-width: 0;
+      max-width: 62ch;
+      margin: 0;
+      color: var(--cc-muted);
+      font-size: 11px;
+      text-wrap: pretty;
+    }
+    .goal-change-actions { flex: 0 0 auto; }
     .debug-invitation {
       display: flex;
       align-items: center;
@@ -456,8 +499,9 @@ export const runtimeMapStyles = String.raw`
       text-align: left;
     }
     .path-node.active, .path-node.focused { background: var(--cc-surface); border-color: var(--cc-ink); }
-    .path-kicker { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 38px; color: var(--cc-muted); font-size: 10px; }
-    .path-index { font-variant-numeric: tabular-nums; }
+    .path-kicker { display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding-right: 38px; color: var(--cc-muted); font-size: 10px; }
+    .path-index { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .path-new { flex: 0 0 auto; color: var(--cc-accent); font-weight: 600; }
     .path-title { display: block; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
     .path-file { display: block; margin-top: 4px; overflow: hidden; color: var(--cc-muted); text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family, ui-monospace, monospace); font-size: 10px; }
     .path-reason { display: -webkit-box; margin-top: 7px; overflow: hidden; color: var(--cc-muted); font-size: 11px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -679,6 +723,7 @@ export const runtimeMapStyles = String.raw`
       .composer-shortcut { display: none; }
       .variable-row { grid-template-columns: 1fr; gap: 4px; }
       .core-location-header,
+      .goal-change,
       .debug-invitation { align-items: flex-start; flex-direction: column; }
       .core-location-link { width: 100%; }
     }

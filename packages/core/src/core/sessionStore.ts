@@ -5,6 +5,7 @@ import {
   ConversationRecord,
   ConversationSummary,
   DebugPause,
+  RouteNode,
   RoutePlan,
   SessionState,
   TutorMessage,
@@ -385,7 +386,13 @@ export class SessionStore implements Disposable {
     chatMessages: readonly ChatMessage[],
     requestKind: SessionState["requestKind"],
   ): void {
-    const preserveDebugSnapshot = Boolean(this.state.debugSessionId);
+    // 路径围绕一个探索目标累积：这次提问只追加它带来的站点，已有站点保留。
+    // 之前这里整条替换 route，用户连续追问时上一条链路连同现场证据一起消失了。
+    const merged = accumulateRoute(
+      this.state.route,
+      this.state.revealedRouteNodeCount,
+      route,
+    );
     this.updateConversation({
       ...this.state,
       conversationTitle: resolvedConversationTitle(
@@ -393,22 +400,48 @@ export class SessionStore implements Disposable {
         route.question,
       ),
       chatMessages: chatMessages.map((message, index) => index === chatMessages.length - 1
-        && message.role === "assistant" && message.text === route.summary ? { ...message, route } : message),
-      route,
-      revealedRouteNodeCount: route.nodes.length > 0 ? 1 : 0,
-      pauses: preserveDebugSnapshot ? this.state.pauses : [],
-      selectedPauseId: preserveDebugSnapshot ? this.state.selectedPauseId : undefined,
-      selectedFrameId: preserveDebugSnapshot ? this.state.selectedFrameId : undefined,
-      debugStatus: this.state.debugSessionId ? this.state.debugStatus : "idle",
+        && message.role === "assistant" && message.text === route.summary ? { ...message, route: merged.route } : message),
+      route: merged.route,
+      revealedRouteNodeCount: merged.revealedRouteNodeCount,
+      // pauses / selectedPauseId / selectedFrameId / debugStatus 刻意不在这里重置：
+      // 它们是这次探索已经采集到的运行证据，属于同一个上下文，不该被下一个问题清掉。
       busyMessage: undefined,
       requestKind,
       tutorMessage: {
         id: randomUUID(),
         kind: "route",
-        text: route.summary,
+        text: merged.route.summary,
       },
       contentMode: "chat",
     });
+  }
+
+  /**
+   * 采纳模型建议的新探索目标：只保留本次提问带来的站点，旧路径留在会话历史里。
+   * 没有待确认目标、或本次提问没有带来任何新站点时，不改动状态。
+   */
+  public startNewGoal(): boolean {
+    const route = this.state.route;
+    if (!route?.pendingGoal) {
+      return false;
+    }
+    const kept = route.nodes.filter(
+      (node) => node.addedByQuestion === route.question,
+    );
+    if (kept.length === 0) {
+      return false;
+    }
+    this.updateConversation({
+      ...this.state,
+      route: {
+        question: route.question,
+        summary: route.summary,
+        goal: route.pendingGoal,
+        nodes: kept,
+      },
+      revealedRouteNodeCount: kept.length,
+    });
+    return true;
   }
 
   private rememberCurrentConversation(touch = false): void {
@@ -472,6 +505,55 @@ export function pauseLabel(pause: DebugPause): string {
   return location
     ? `${location.path.split(/[\\/]/u).at(-1)}:${location.line}`
     : frame?.name ?? "未知源码位置";
+}
+
+/** 站点身份按「文件 + 行」判定：同一行不重复出现在路径上。 */
+function routeNodeKey(node: RouteNode): string {
+  return `${node.location.path}:${node.location.line}`;
+}
+
+/**
+ * 把一次提问产生的路线并进当前路径。
+ * 已有站点原样保留，只追加按「文件 + 行」判定为新站点的部分；探索目标只在模型给出时更新。
+ */
+function accumulateRoute(
+  current: RoutePlan | undefined,
+  currentRevealed: number,
+  incoming: RoutePlan,
+): { readonly route: RoutePlan; readonly revealedRouteNodeCount: number } {
+  const existing = current?.nodes ?? [];
+  if (existing.length === 0) {
+    return {
+      // 还没有路径时，「换目标」无从谈起：模型给的 pendingGoal 就是这次的目标。
+      route: {
+        ...incoming,
+        goal: incoming.goal ?? incoming.pendingGoal,
+        pendingGoal: undefined,
+      },
+      revealedRouteNodeCount: incoming.nodes.length > 0 ? 1 : 0,
+    };
+  }
+  const seen = new Set(existing.map(routeNodeKey));
+  const added = incoming.nodes
+    .filter((node) => !seen.has(routeNodeKey(node)))
+    // 打上「哪个问题带来这一站」，界面据此标出本次新增。
+    .map((node) => ({ ...node, addedByQuestion: incoming.question }));
+  const nodes = [...existing, ...added];
+  return {
+    route: {
+      question: incoming.question,
+      summary: incoming.summary,
+      // 换目标要用户确认，确认之前当前目标不变。
+      goal: incoming.pendingGoal ? current?.goal : incoming.goal ?? current?.goal,
+      pendingGoal: incoming.pendingGoal,
+      nodes,
+    },
+    // 已展开的站点保持展开，本次新增的也直接可见；否则用户看到的还是「路径没变」。
+    revealedRouteNodeCount: Math.min(
+      nodes.length,
+      Math.max(1, currentRevealed) + added.length,
+    ),
+  };
 }
 
 function createConversation(): ConversationRecord {
@@ -604,7 +686,9 @@ function isRoutePlan(value: unknown): value is RoutePlan {
     typeof object?.question === "string" &&
     typeof object.summary === "string" &&
     Array.isArray(object.nodes) &&
-    object.nodes.every(isRouteNode)
+    object.nodes.every(isRouteNode) &&
+    (object.goal === undefined || typeof object.goal === "string") &&
+    (object.pendingGoal === undefined || typeof object.pendingGoal === "string")
   );
 }
 
@@ -616,6 +700,10 @@ function isRouteNode(value: unknown): value is RoutePlan["nodes"][number] {
     (object.symbol === undefined || typeof object.symbol === "string") &&
     isSourceLocation(object.location) &&
     typeof object.reason === "string" &&
+    (object.role === undefined || typeof object.role === "string") &&
+    (object.relation === undefined || typeof object.relation === "string") &&
+    (object.addedByQuestion === undefined ||
+      typeof object.addedByQuestion === "string") &&
     (object.confidence === "high" ||
       object.confidence === "medium" ||
       object.confidence === "low")

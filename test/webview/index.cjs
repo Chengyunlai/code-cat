@@ -33,9 +33,9 @@ async function run() {
       workspaceOpen: true, conversationId: 'conversation-1', conversationTitle: '库存不足时，还会扣款吗？',
       debugStatus: 'paused', debugging: true, debugEvidenceVisible: true, livePauseId: pause.id,
       pauses: [pause], frames: pause.frames, variables: pause.variables,
-      route: { summary: '库存检查决定订单是否可以继续。', nodes: [
+      route: { summary: '库存检查决定订单是否可以继续。', goal: '库存与扣款的先后关系', question: '库存不足时，还会扣款吗？', nodes: [
         { id: 'route-1', title: '库存判断', role: '判定可用库存是否满足订单', reason: '在扣款前确认可用数量。', location: { path: '/project/inventory.py', line: 24 }, fileLabel: 'inventory.py' },
-        { id: 'route-2', title: '协调结账', relation: '结账入口把订单交给库存边界', reason: '确认库存结果如何影响后续流程。', location: { path: '/project/checkout.py', line: 12 }, fileLabel: 'checkout.py' },
+        { id: 'route-2', title: '协调结账', relation: '结账入口把订单交给库存边界', reason: '确认库存结果如何影响后续流程。', location: { path: '/project/checkout.py', line: 12 }, fileLabel: 'checkout.py', addedByQuestion: '那异常会被谁处理？' },
       ] },
       organizationFiles: [
         { id: 'route-1', fileLabel: 'src/inventory.py', title: '库存判断', role: '判定可用库存是否满足订单' },
@@ -88,6 +88,8 @@ async function run() {
     assert.match(await page.locator('.path-role').first().textContent(), /职责：判定可用库存是否满足订单/, 'a reading stop states what the module is responsible for');
     assert.equal(await page.locator('.path-relation').count(), 1, 'only stops after the first carry a relation line');
     assert.match(await page.locator('.path-relation').first().textContent(), /↳ 结账入口把订单交给库存边界/, 'a stop explains how it connects to the previous one');
+    assert.equal(await page.locator('.path-new').count(), 1, 'only the stop added by the latest question is marked as new');
+    assert.match(await page.locator('.path-new').first().textContent(), /本次新增/);
     await page.locator('.path-node').first().screenshot({ path: path.join(output, 'path-node-role-360.png') });
     await page.evaluate(() => window.postMessage({ type: 'smokeTab', tab: 'overview' }, '*'));
     await page.waitForFunction(() => document.querySelector('.observation') !== null);
@@ -225,6 +227,22 @@ async function run() {
     state = { ...state, pauses: [], frames: [], variables: [], debugStatus: 'ended' };
     await send();
     assert.match(await page.locator('.observation').textContent(), /快照已释放/);
+    // 累积路径与断点邀请收敛：先给目标和规模，再给起点；邀请必须指名具体一站。
+    state = { ...state, debugStatus: 'idle', debugging: false };
+    await send();
+    assert.equal(await page.locator('.core-location-label').textContent(), '阅读路径起点', 'a multi-stop path names its first stop as the entry, not the core location');
+    assert.match(await page.locator('.exploration-goal-text').textContent(), /库存与扣款的先后关系/, 'the card states the exploration goal before the entry');
+    assert.match(await page.locator('.exploration-goal-scale').textContent(), /路径共 2 站 · 本次新增 1 站/, 'the card states the accumulated path size');
+    assert.match(await page.locator('.debug-invitation h3').textContent(), /想验证第 2 站的实际结果吗？/, 'the breakpoint invitation names a stop instead of asking generically');
+    assert.equal(await page.locator('.debug-invitation [data-action="start-guided-debug"]').evaluate((el) => el.className.includes('quiet')), true, 'the invitation is secondary to reading the path');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the exploration goal row does not overflow');
+    state = { ...state, route: { ...state.route, pendingGoal: '支付失败会经过哪些函数' } };
+    await send();
+    assert.match(await page.locator('.goal-change-copy').textContent(), /另一个目标：支付失败会经过哪些函数/, 'a suggested goal change is announced instead of silently replacing the path');
+    assert.equal(await page.locator('.core-location').count(), 1, 'the existing path stays visible while the goal change is pending');
+    await page.locator('.goal-change [data-action="start-new-goal"]').click();
+    assert.deepEqual(await page.evaluate(() => window.sentMessages.at(-1)), { type: 'startNewGoal' });
+    await page.screenshot({ path: path.join(output, 'exploration-continuity-360.png'), fullPage: true });
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => window.sentMessages.some((item) => item.type === 'scriptError')), false);
     console.log(`Webview behavior, theme overrides, contrast and 6 visual captures passed: ${output}`);
