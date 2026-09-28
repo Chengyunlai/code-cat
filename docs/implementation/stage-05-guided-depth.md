@@ -140,3 +140,17 @@ PyCharm 配置截图暴露了前一轮排障写入项目设置的 NVM 绝对路�
 `code-cat-0.2.4.vsix` 第一次打包有 116 个文件，多出的是 `extension/.workbuddy-ai/memory/MEMORY.md` 与 `2026-09-24.md`。`.vscodeignore` 原本只挡了 `verification-*/` 与 `*.vsix`。
 
 补上 `.vscodeignore` 的 `.vscode-test/**` 与 `.workbuddy-ai/**` 后重新打包，回到 114 文件 / 189.98 KB，`unzip -l | grep -cE "workbuddy-ai|vscode-test"` 为 0。新增会被打进包的工作区目录时，记得同步 `.vscodeignore`。
+
+## 输入框整体读作文本框（2026-09-28）
+
+用户反馈：光标移入输入框时应该变成输入符号（I 形），实际大部分区域是箭头。
+
+用 playwright 探针读 `elementFromPoint` + `getComputedStyle` 量出真实情况：输入框 332×84，只有中间 36px 的 `textarea` 行是 `text`，内边距、`#composer-mode` 标签、`.composer-meta` 空白全是 `auto`——占了整块面积的大半。根因是上一轮「交互质感补齐」只给 `.composer textarea` 补了 `cursor: text`，容器 `.composer-inner` 没写，于是容器自己的区域和不接收文本的子元素都回落到默认箭头。
+
+修法（仍只改 `packages/ui/src/runtimeMapStyles.ts`）：`.composer-inner` 加 `cursor: text`，再用 `.composer-inner button { cursor: pointer }` 把按钮拉回手型、`.composer-inner button:disabled { cursor: default }` 保持禁用态的默认箭头。
+
+特异性上踩了一次：`button:disabled` 与 `.composer-inner button` 都是 (0,0,1,1)，同分靠源码顺序决胜，先写的 `.composer-inner button` 会被后写的 `button:disabled` 压住，禁用按钮会变成手型。必须写成 `.composer-inner button:disabled`（(0,0,2,1)）才压得住。
+
+验证：探针的前后对比本身就是负向证据——修复前 `#composer-inner` / `#composer-mode` / `.composer-meta` 都是 `auto`，修复后都是 `text`；禁用的发送按钮 `default`，填入草稿后变 `pointer`。`test/webview/index.cjs` 新增 6 条断言（容器、模式标签、meta 行、禁用按钮、启用按钮及其箭头 span）。`npm run check`、`node test/webview/index.cjs`（7 张截图）、`env -u ELECTRON_RUN_AS_NODE SHELL=/bin/sh npm run smoke:vscode`（三组）全部 Exit 0。
+
+发版：VS Code `0.2.7 → 0.2.8`（`code-cat-0.2.8.vsix`，117 文件 / 207.12 KB）、JetBrains `0.2.10-preview → 0.2.11-preview`（webstorm-251 与 pycharm-261 各 48 文件），都已装到本机三个 IDE；读回产物确认 `packages/ui/dist/runtimeMapStyles.js` 与 jar 内 `codecat.html` 都含新规则。旧插件目录已备份到 `plugins/` 之外。
