@@ -6,4 +6,4 @@
 
 命令：`python3 examples/stage-01-pause-conversation/user_code/main.py`（仓库根目录）。输入数量 10、库存 8，输出 `库存不足，未进入扣款步骤`。
 
-[本地设计与实现记录](../../docs/implementation/stage-01.md)。尚未提交。
+[本地设计与实现记录](../../docs/implementation/stage-01.md)。实现提交 `d1d6112`，见 [示例索引](../README.md)。

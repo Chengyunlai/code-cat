@@ -6,7 +6,9 @@ Code Cat helps a learner understand a Python, TypeScript or JavaScript project b
 
 Read README.md → AGENTS.md → this file → examples/README.md → the relevant docs/implementation record. `examples/` is the canonical example root; stage examples start with `user_code/`, then `core/`. Keep these entries synchronized when public usage or implementation paths change.
 
-Run `npm run check` and `npm run smoke:vscode`. For rendered UI verification, compile then run `node test/webview/index.cjs` with Playwright available and Chrome installed (or CODE_CAT_BROWSER_EXECUTABLE set).
+Other entry points: docs/README.md indexes the documentation by question, docs/development.md holds environment and verification requirements, docs/roadmap.md holds the falsifiable assumptions not yet implemented, CHANGELOG.md is the release history, and CONTRIBUTING.md is the contribution process. This repository does not use GitHub Issues to track tasks.
+
+Run `npm run check` and `npm run smoke:vscode`. For rendered UI verification, compile then run `node test/webview/index.cjs` with Playwright available and Chrome installed (or CODE_CAT_BROWSER_EXECUTABLE set). Before committing documentation, run `python3 scripts/verify-docs.py`.
 
 ## Pause conversation flow
 
@@ -72,9 +74,11 @@ PyCharm 261 引擎启动顺序和错误诊断修复使用本地 `0.2.5-preview` 
 
 阅读路径的每个节点在 `reason`（为什么停在这一行）之外可选携带 `role`（这个文件或模块负责什么、为什么存在）与 `relation`（与上一个节点的关系：调用方向、数据来源或跨越的边界），首个节点不填 `relation`。两者都是源码推断，与真实调试证据分开呈现：路径卡上 `role` 用 accent 竖线、`relation` 用推断色。旧模型输出缺少这两个字段时界面不占位，行为不变。
 
-Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.md，隐私说明位于 plugins/jetbrains/PRIVACY.md。0.2.3-preview 已提交审核，插件页为 https://plugins.jetbrains.com/plugin/34438-code-cat；当前尚未公开，不能表述为已上架。当前工作树另生成 251 WebStorm 与 261 PyCharm 两个本地包，已去除强制 NodeJS 依赖；PyCharm 免费版中的 NodeJS 运行时可能被禁用。详见 docs/implementation/stage-05-guided-depth.md。
+Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.md，隐私说明位于 plugins/jetbrains/PRIVACY.md。`0.2.3-preview` **已通过审核并公开**，插件页为 https://plugins.jetbrains.com/plugin/34438-code-cat；这是线上唯一公开版本，兼容范围只有 251.*。编号更大的 JetBrains 版本都只是本地包，不能表述为已上架。当前工作树另生成 251 WebStorm 与 261 PyCharm 两个本地包，已去除强制 NodeJS 依赖；PyCharm 免费版中的 NodeJS 运行时可能被禁用。详见 docs/implementation/stage-05-guided-depth.md。
 
 当前基线仍为 main/6babced，先前 0.1.7–0.1.9 改动保留在未提交工作树。本轮版本 0.2.0，未提交或推送。
+
+（以上两段是 Stage 04 当时的验证状态，不是当前状态。当前版本与发布状态见本文末「版本与发布状态」一节。）
 
 核心迁入 packages/core，无 vscode 导入；src 原路径保留兼容转发。共享 UI 在 packages/ui；JetBrains 经 packages/engine 的私有 stdio 通信。plugins/jetbrains 使用平台调试、源码导航、PasswordSafe 和 JCEF。WebStorm SDK 251 已构建并真实命中 TS source-map 断点，共享引擎已保存观察消息。PyCharm 261 已验证插件加载与 JCEF 宿主创建，页面内容回读和 Python 真暂停尚未验证。预览版尚无变量、完整调用栈和跨 IDE 历史同步，不宣称整个 JetBrains 产品线已验证。
 
@@ -125,5 +129,7 @@ Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.m
 ## 版本与发布状态
 
 两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.8`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.11-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
+
+**版本历史只写在 `CHANGELOG.md`**，README 不再保留按版本编号的功能小节。发版后要同步四处：CHANGELOG 新增小节、两个 README 顶部的当前版本行、本节的版本号、以及 `plugin.xml` 的 change notes（JetBrains 上传后只有兼容范围可改，change notes 必须上传前定稿）。`python3 scripts/verify-docs.py` 会核对这四处与两个版本源是否一致，不一致直接报错。
 
 JetBrains Marketplace：pluginId `34438`，pluginXmlId `dev.codecat`，线上 `0.2.3-preview` 已通过审核并公开，兼容范围只有 `251.*`（2025.1 系列），因此 PyCharm / WebStorm 2026.1 装不上。每个新版本都要人工审核，通常 3–4 个工作日，没有通道豁免。上传后只有兼容范围可改，描述与 change notes 必须在上传前定稿。发布流程、接口与自查清单见 `plugins/jetbrains/MARKETPLACE.md`；命令行上传用 `npm run publish:jetbrains`（`scripts/publish-jetbrains.py`，需要 `PUBLISH_TOKEN`）。

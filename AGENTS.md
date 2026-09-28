@@ -5,6 +5,7 @@
 - 唯一 canonical example 根目录是 `examples/`。新增阶段使用独立目录，包含 `user_code/` 和 `core/`；先验证用户通过公开 UI / API 的使用路径，再说明内部实现。
 - 修改使用入口、状态模型或目录时，同步 README、CONTEXT、示例索引与阶段记录。断点用稳定符号定位，不照抄旧行号。
 - 调试证据必须来自真实暂停；区分当前暂停、历史观察、源码推断和不可用证据。不要执行模型生成的表达式。
-- 使用 `npm run check` 检查类型；调试链路使用 `npm run smoke:vscode`。UI 改动另做实际 Webview 渲染验证。
+- 使用 `npm run check` 检查类型；调试链路使用 `npm run smoke:vscode`。UI 改动另做实际 Webview 渲染验证。改文档、README 或版本号时跑 `python3 scripts/verify-docs.py`。
+- 版本历史只写在 `CHANGELOG.md`；README 保持「是什么 → 快速开始 → 能力 → 安装 → 配置 → 使用 → 开发 → 结构 → 限制 → 贡献 → 许可」的结构，不要再往 README 里加按版本编号的小节。文档分工见 `docs/README.md`。
 - 记录真实测试结果、基线与工作树状态；未经用户授权不提交、推送或发布。不要求文档包含自身所在提交的 SHA。
 - 跨 IDE 分层：`packages/core` 不得导入 IDE；`packages/ui` 共享呈现；`src` 与 `plugins/jetbrains` 承担宿主操作。`packages/engine` 是本地 stdio 适配。Stage 04 示例和安装说明分别位于 `examples/stage-04-shared-core/`、`plugins/jetbrains/README.md`。

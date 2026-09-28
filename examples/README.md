@@ -14,5 +14,6 @@
 - [Stage 05：从作用进入调试现场](stage-05-guided-depth/README.md)：结账路径先建立高层理解，再围绕真实暂停追问与验证。
 - [Stage 06：中文提问也能命中相关代码](stage-06-retrieval-and-pause-binding/README.md)：检索词提取与扩展，以及暂停追问携带项目检索。
 - [Stage 07：阅读路径围绕一个探索目标累积](stage-07-exploration-continuity/README.md)：同一目标下追问只追加新站点、换目标先确认，运行入口 `node examples/stage-07-exploration-continuity/user_code/main.cjs`。
+- Stage 08（请求活性）是修复阶段，没有独立的示例目录；可运行证据是回归测试 `test/engine/timeout.cjs`，随 `npm run test:engine` 一起执行，实现记录见 [stage-08](../docs/implementation/stage-08-request-liveness.md)。
 
-JetBrains 免费预览版已[提交 Marketplace 审核](https://plugins.jetbrains.com/plugin/34438-code-cat)，安装与审核状态见 [插件指南](../plugins/jetbrains/README.md)；示例运行方式不因发布渠道改变。
+JetBrains 免费预览版已在 [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34438-code-cat) 公开（线上 `0.2.3-preview`，只兼容 2025.1 系列）；安装方式与最新本地包见 [插件指南](../plugins/jetbrains/README.md)，示例运行方式不因发布渠道改变。
