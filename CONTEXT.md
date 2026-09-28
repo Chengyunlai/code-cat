@@ -112,6 +112,16 @@ Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.m
 
 示例与验证见 `examples/stage-07-exploration-continuity/` 与 `docs/implementation/stage-07-exploration-continuity.md`。
 
+## Stage 08 · 请求活性
+
+这一阶段来自一次用户报障：面板停在「正在思考」永不返回。结论是**与凭据无关**——不配置模型 4.5 s 报错、假 key 5.3 s 报 401，只有「服务端已返回响应头、响应体迟迟不来」这一种情形会永久悬挂。根因是超时只做了 `setTimeout(() => controller.abort(), timeoutMs)`，而 `abort()` 打不断挂起的响应体读取，外层 Promise 永不 settle；实测 `redirect: "error"` 时 `timeoutMs ≤ 8000` 正常抛出、`≥ 8192` 永久悬挂，而产品用的是 `REQUEST_TIMEOUT_MS = 90_000`，必然落在坏的一侧。
+
+修法集中在 `packages/core/src/ai/modelClients.ts`：新增 `withRequestDeadline`，用 `Promise.race` 让请求同时与「必定 reject 的定时器」和「token 取消」竞争，保证 Promise 一定 settle；`postJson` 与 `requestStreamingModel` 两处都改为经由它发起，并给 `fetch` 换用 `redirect: "manual"` + `redirectRejection(status)` 自行拒绝 3xx——既不把凭据转发到重定向目标，又让 `abort()` 恢复可中断性。超时之后底层挂起的读取仍会持有套接字，因此额外挂了 `operation.catch(() => undefined)`，避免变成未处理的 rejection。
+
+第二个缺陷在重复提问：`SessionStore.beginQuestion` 在 `requestKind` 非空时返回 `undefined`，`packages/engine/src/main.ts::ask` 与 `src/extension.ts::askQuestion` 都直接 `return`，用户看不到任何反馈。现在两处都改调 `SessionStore.notifyQuestionBusy`，它写入一个新的 `TutorMessage` 分支 `kind: "busy"`（`packages/core/src/domain/model.ts`），把没发出去的提问放进 `retryQuestion` 回填输入框，并**刻意不动** `requestKind` / `busyMessage`，进行中的请求不受影响。渲染在 `packages/ui/src/runtimeMapScript.ts::renderTutorMessage` 增加 `busy` 分支（标题「上一条回答还在进行」、副标题指向「停止回答」、class 加 `.busy`），`renderOverview` 的渲染门槛也放行 `busy`。
+
+回归测试是 `test/engine/timeout.cjs`，用裸 TCP 服务端只回响应头、不回正文，超时取 12000 ms（刻意落在旧实现永久悬挂的区间），覆盖非流式、流式、取消、302 四个场景，整支 24.5 s；已随 `npm run test:engine` 一起跑。重复提问的提示断言加在 `test/engine/index.cjs`，渲染断言加在 `test/webview/index.cjs`。两支新断言都做过负向验证（退回旧实现时确实失败）。细节与实测输出见 `docs/implementation/stage-08-request-liveness.md`。
+
 ## 版本与发布状态
 
 两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.6`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.9-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
