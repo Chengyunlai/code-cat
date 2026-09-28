@@ -124,6 +124,6 @@ Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.m
 
 ## 版本与发布状态
 
-两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.6`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.9-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
+两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.7`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.10-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
 
 JetBrains Marketplace：pluginId `34438`，pluginXmlId `dev.codecat`，线上 `0.2.3-preview` 已通过审核并公开，兼容范围只有 `251.*`（2025.1 系列），因此 PyCharm / WebStorm 2026.1 装不上。每个新版本都要人工审核，通常 3–4 个工作日，没有通道豁免。上传后只有兼容范围可改，描述与 change notes 必须在上传前定稿。发布流程、接口与自查清单见 `plugins/jetbrains/MARKETPLACE.md`；命令行上传用 `npm run publish:jetbrains`（`scripts/publish-jetbrains.py`，需要 `PUBLISH_TOKEN`）。
