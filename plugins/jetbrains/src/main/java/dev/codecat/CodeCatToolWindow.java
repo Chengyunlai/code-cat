@@ -34,14 +34,15 @@ public final class CodeCatToolWindow implements ToolWindowFactory {
       Disposer.register(this, browser);
       Disposer.register(this, query);
       actions = new IdeActions(project, this);
-      engine = new EngineProcess(project, this::receive);
+      engine = new EngineProcess(project, this::receive, message -> showError(message));
       query.addHandler(raw -> {
         try {
           JsonObject request = JsonParser.parseString(raw).getAsJsonObject();
+          if (!request.has("type") || !request.get("type").isJsonPrimitive()) return null;
           if ("configureModel".equals(request.get("type").getAsString())) {
             ApplicationManager.getApplication().invokeLater(() -> actions.configure());
           } else engine.send(request);
-        } catch (Exception error) { showError("操作未完成，请检查本地引擎是否已启动。"); }
+        } catch (Exception error) { showError("本地引擎未能处理操作："+error.getMessage()); }
         return null;
       });
       try {
@@ -61,11 +62,12 @@ public final class CodeCatToolWindow implements ToolWindowFactory {
         browser.loadHTML(html);
         engine.start();
 
-      } catch (Exception error) { showError("无法启动 Code Cat。请在更多 → 配置模型中设置 Node.js 的绝对路径。"); }
+      } catch (Exception error) { showError("无法启动 Code Cat："+error.getMessage()); }
     }
     void receive(JsonObject message) {
       ApplicationManager.getApplication().invokeLater(() -> {
         if (project.isDisposed()) return;
+        if (!message.has("method") || !message.get("method").isJsonPrimitive()) { showError("本地引擎返回了无效消息。"); return; }
         String method = message.get("method").getAsString();
         if ("view".equals(method)) browser.getCefBrowser().executeJavaScript("window.postMessage(" + message.get("params") + ", '*')", browser.getCefBrowser().getURL(), 0);
         else if ("host".equals(method)) actions.handle(message.getAsJsonObject("params"));

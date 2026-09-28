@@ -27,20 +27,18 @@ final class IdeActions {
   private CredentialAttributes credentials() {return new CredentialAttributes("Code Cat:"+project.getLocationHash());}
   void configure() {
     var properties=PropertiesComponent.getInstance(project);
-    JTextField node=new JTextField(properties.getValue("codecat.node","node"));
     JTextField base=new JTextField(properties.getValue("codecat.base","https://ark.cn-beijing.volces.com/api/coding/v3"));
     JTextField model=new JTextField(properties.getValue("codecat.model",""));
     JComboBox<String> transport=new JComboBox<>(new String[]{"openai-chat","openai-responses","anthropic","gemini"});
     transport.setSelectedItem(properties.getValue("codecat.transport","openai-chat"));
     JPasswordField key=new JPasswordField();
     JPanel panel=new JPanel(new java.awt.GridLayout(0,1,4,4));
-    panel.add(new JLabel("Node.js 可执行文件（推荐绝对路径）"));panel.add(node);
     panel.add(new JLabel("接口协议"));panel.add(transport);
     panel.add(new JLabel("Base URL"));panel.add(base);
     panel.add(new JLabel("模型名称"));panel.add(model);
     panel.add(new JLabel("API Key（留空保留，保存在系统密码库）"));panel.add(key);
     if(JOptionPane.showConfirmDialog(host.browser.getComponent(),panel,"配置 Code Cat",JOptionPane.OK_CANCEL_OPTION)!=JOptionPane.OK_OPTION)return;
-    properties.setValue("codecat.node",node.getText().trim());properties.setValue("codecat.base",base.getText().trim());
+    properties.setValue("codecat.base",base.getText().trim());
     properties.setValue("codecat.model",model.getText().trim());properties.setValue("codecat.transport",(String)transport.getSelectedItem());
     char[] password=key.getPassword();
     String newSecret=password.length>0?new String(password):null;Arrays.fill(password,'\0');
@@ -48,7 +46,7 @@ final class IdeActions {
       try {
         if(newSecret!=null)PasswordSafe.getInstance().set(credentials(),new Credentials("api-key",newSecret));
         host.engine.close();host.engine.start();
-      }catch(Exception error){host.showError("启动失败，请检查 Node.js 路径。需要 Node.js 20 或更高版本。");}
+      }catch(Exception error){host.showError("启动失败："+error.getMessage()+"。需要 Node.js 20 或更高版本。");}
     });
   }
   void configureEngine() {
@@ -59,7 +57,9 @@ final class IdeActions {
       JsonObject config=new JsonObject();config.addProperty("transport",p.getValue("codecat.transport","openai-chat"));
       config.addProperty("baseUrl",p.getValue("codecat.base","https://ark.cn-beijing.volces.com/api/coding/v3"));
       config.addProperty("model",p.getValue("codecat.model",""));config.addProperty("apiKey",key);
-      JsonObject request=new JsonObject();request.addProperty("method","configure");request.add("params",config);host.engine.send(request);
+      try {
+        JsonObject request=new JsonObject();request.addProperty("method","configure");request.add("params",config);host.engine.send(request);
+      } catch(Exception error) { host.showError("模型配置未能发送到本地引擎："+error.getMessage()); }
     });
   }
   void handle(JsonObject message) {
