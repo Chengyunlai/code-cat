@@ -60,11 +60,19 @@ Route answers persist their RoutePlan on the assistant message. Historical debug
 
 ## Stage 04 · 共享核心 / JetBrains
 
-Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.md，隐私说明位于 plugins/jetbrains/PRIVACY.md。0.2.3-preview 已提交审核，插件页为 https://plugins.jetbrains.com/plugin/34438-code-cat；当前尚未公开，不能表述为已上架。构建包包含 MIT LICENSE 与 40px SVG 图标，插件仅声明 251.* 且依赖 NodeJS。详见 docs/implementation/stage-04.md。
+Stage 05 的高层到现场探索见 `docs/implementation/stage-05-guided-depth.md` 和 `examples/stage-05-guided-depth/`。本地测试包为 `0.2.4-preview`；Marketplace 审核中的 `0.2.3-preview` 不含此改动。共享提示词先解释作用、职责与边界，再进入最小代码路径；暂停 UI 将路径线索与真实观察分开，提供可编辑的作用/机制/验证追问。真实暂停与未采集数据的证据边界不变。此阶段的测试、基线和工作树状态以阶段记录中的实测结果为准。
+
+PyCharm 261 引擎启动顺序和错误诊断修复使用本地 `0.2.5-preview` 包；`0.2.4-preview` 的通用“操作未完成”提示缺少真实错误原因。随后因配置弹窗暴露机器专属 Node 路径，将运行时自动发现并升至 `0.2.6-preview`；Marketplace 审核版本未变。共享的阅读路径职责/关系改动把本地测试包升至 `0.2.7-preview`；VS Code 包版本不随该共享改动递增，仍以 `--force` 覆盖安装同名 `0.2.4` 包。
+
+对话中的相关代码组织图由宿主投影当前 RoutePlan 已校验的全部文件身份（相对路径、节点 ID、阅读标题、模块职责），共享 UI 按目录分组；组织连线不表示调用关系或运行证据。文件下方优先显示模块职责（`RouteNode.role`），缺失时回退阅读标题。源码导航仍由宿主依据原节点 ID 执行。默认展示最多四个目录、每目录两个文件，可展开；详见 Stage 05 记录。
+
+阅读路径的每个节点在 `reason`（为什么停在这一行）之外可选携带 `role`（这个文件或模块负责什么、为什么存在）与 `relation`（与上一个节点的关系：调用方向、数据来源或跨越的边界），首个节点不填 `relation`。两者都是源码推断，与真实调试证据分开呈现：路径卡上 `role` 用 accent 竖线、`relation` 用推断色。旧模型输出缺少这两个字段时界面不占位，行为不变。
+
+Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.md，隐私说明位于 plugins/jetbrains/PRIVACY.md。0.2.3-preview 已提交审核，插件页为 https://plugins.jetbrains.com/plugin/34438-code-cat；当前尚未公开，不能表述为已上架。当前工作树另生成 251 WebStorm 与 261 PyCharm 两个本地包，已去除强制 NodeJS 依赖；PyCharm 免费版中的 NodeJS 运行时可能被禁用。详见 docs/implementation/stage-05-guided-depth.md。
 
 当前基线仍为 main/6babced，先前 0.1.7–0.1.9 改动保留在未提交工作树。本轮版本 0.2.0，未提交或推送。
 
-核心迁入 packages/core，无 vscode 导入；src 原路径保留兼容转发。共享 UI 在 packages/ui；JetBrains 经 packages/engine 的私有 stdio 通信。plugins/jetbrains 使用平台调试、源码导航、PasswordSafe 和 JCEF。WebStorm SDK 251 已构建并真实命中 TS source-map 断点，共享引擎已保存观察消息。预览版尚无变量、完整调用栈和跨 IDE 历史同步，不宣称整个 JetBrains 产品线已验证。
+核心迁入 packages/core，无 vscode 导入；src 原路径保留兼容转发。共享 UI 在 packages/ui；JetBrains 经 packages/engine 的私有 stdio 通信。plugins/jetbrains 使用平台调试、源码导航、PasswordSafe 和 JCEF。WebStorm SDK 251 已构建并真实命中 TS source-map 断点，共享引擎已保存观察消息。PyCharm 261 已验证插件加载与 JCEF 宿主创建，页面内容回读和 Python 真暂停尚未验证。预览版尚无变量、完整调用栈和跨 IDE 历史同步，不宣称整个 JetBrains 产品线已验证。
 
 后续阅读 docs/implementation/stage-04.md、examples/stage-04-shared-core/README.md、plugins/jetbrains/README.md。继续修改核心需运行独立引擎测试及原 VS Code 回归；修改宿主需运行隔离 WebStorm 测试。
 

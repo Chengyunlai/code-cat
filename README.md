@@ -6,11 +6,19 @@ Code Cat 是一个面向 Python、TypeScript 和 JavaScript 项目的 AI 代码�
 
 > **项目状态：** 正在积极开发的早期原型。目前支持 VS Code 中的 Python、TS / JS 代码阅读与 Python / Node 调试；稳定版本发布前，插件 API 和工作区数据结构仍可能调整。
 
+## 从作用到现场的连续探索
+
+本地 `0.2.4-preview` 先从问题涉及的功能**为何存在、负责什么、位于哪一步**建立背景，再沿最相关的源码路径深入。真实暂停卡片把源码线索与运行观察分开，并提供“先看作用”“再看机制”“验证下一步”三个可编辑追问入口；用户决定何时发送与单步。没有采集到的变量或调用栈不会被当成事实。可从 [Stage 05 结账示例](examples/stage-05-guided-depth/user_code/README.md)体验这条路径。Marketplace 正在审核的 `0.2.3-preview` 尚不包含此改动。
+
+回答旁的**相关代码组织图**按目录展示这次问题已定位的文件，并在文件下方标出这个文件或模块**负责什么**（模型给出的职责判断；模型未给出时回退为阅读标题）。点击文件可打开源码，按需展开更多文件。图的连线只表示目录包含关系；执行路径和真实暂停在各自的视图中呈现。
+
+阅读路径的每个节点分开讲两件事：**职责**说明这个文件或模块为什么存在，**关系**说明它和上一个节点怎么衔接（谁调用谁、数据从哪来、跨越了哪条边界）。这两项与「为什么停在这一行」的选行依据分开呈现，都属于源码推断，不会被写成运行事实。模型没有给出时对应行不显示。
+
 ## 0.2.0：共享核心与 JetBrains 预览版
 
-JetBrains 免费预览版已提交 [JetBrains Marketplace 审核](https://plugins.jetbrains.com/plugin/34438-code-cat)，目前尚未公开。审核通过前可按 [JetBrains 指南](plugins/jetbrains/README.md) 从本地安装；是否可直接安装请以 Marketplace 页面为准。
+JetBrains 免费预览版已提交 [JetBrains Marketplace 审核](https://plugins.jetbrains.com/plugin/34438-code-cat)，目前尚未公开。最新本地测试包为 `0.2.7-preview`，会自动查找 Node.js 运行时；审核通过前可按 [JetBrains 指南](plugins/jetbrains/README.md) 从本地安装。Marketplace 审核包尚未包含此改动。
 
-两端复用同一个会话核心和聊天界面。WebStorm 2025.1 已验证 TS 真断点、源码观察及实际 JCEF 页面呈现；JetBrains 的变量与完整调用栈仍待接入。安装见 [JetBrains 指南](plugins/jetbrains/README.md)。
+两端复用同一个会话核心和聊天界面。WebStorm 2025.1 已验证 TS 真断点、源码观察及实际 JCEF 页面呈现。PyCharm 2026.1 有单独的本地安装包，已验证插件加载和 JCEF 宿主创建；Python 真断点尚未验证。JetBrains 的变量与完整调用栈仍待接入。安装见 [JetBrains 指南](plugins/jetbrains/README.md)。
 
 ## 0.1.9：历史回答保留断点入口
 
@@ -323,17 +331,17 @@ npx skills@latest add emilkowalski/skills
 
 ## IDE 支持与仓库结构
 
-当前原型只支持 **VS Code**。未来的 PyCharm 支持应优先保留在同一个仓库中，共享项目索引、路径与会话领域模型、AI 提示词、脱敏规则和 IDE 中立协议。
-
-未来可以逐步演进为：
+当前仓库包含 VS Code 宿主与 JetBrains 预览宿主，共享会话、索引、AI 提示词和界面。目录划分如下：
 
 ```text
-packages/core/             共享 Python 索引、路径、会话和 Tutor 协议
-packages/vscode-extension/ 当前 VS Code/debugpy 适配器和 Webview UI
-packages/jetbrains-plugin/ 未来 PyCharm 调试器适配器和 JetBrains UI
+packages/core/             IDE 中立的会话、索引、提示词与证据规则
+packages/ui/               共享对话与图示界面
+packages/engine/           JetBrains 的本地进程协议
+src/                       VS Code 宿主
+plugins/jetbrains/          JetBrains 宿主与本地安装包
 ```
 
-在 VS Code 垂直链路稳定前，不应提前创建 PyCharm 包。JetBrains 插件使用不同的 SDK、构建系统、调试接口和 UI 工具，过早共享实现会增加耦合。
+JetBrains 的安装包按已验证的 IDE build 分开构建。PyCharm 当前验证到插件加载，Python 调试链路仍需实测。
 
 ## 架构资料
 
@@ -379,9 +387,9 @@ packages/jetbrains-plugin/ 未来 PyCharm 调试器适配器和 JetBrains UI
 
 ## 跨 IDE 架构（0.2.0）
 
-Code Cat 已拆出 `packages/core`（会话、教学、模型与证据规则）、`packages/ui`（共享聊天界面）、`packages/engine`（JetBrains 的本地进程）。现有 `src` 继续作为 VS Code 宿主，`plugins/jetbrains` 提供 WebStorm 2025.1 预览版。
+Code Cat 已拆出 `packages/core`（会话、教学、模型与证据规则）、`packages/ui`（共享聊天界面）、`packages/engine`（JetBrains 的本地进程）。现有 `src` 继续作为 VS Code 宿主，`plugins/jetbrains` 提供 WebStorm 2025.1 与 PyCharm 2026.1 的本地预览包。
 
-JetBrains 安装、配置与限制见 [安装说明](plugins/jetbrains/README.md)。当前验证 TS 真断点及共享核心；变量与完整调用栈尚未接入 JetBrains，其他产品尚未逐一验证。VS Code 的现有调试能力保持不变。
+JetBrains 安装、配置与限制见 [安装说明](plugins/jetbrains/README.md)。WebStorm 已验证 TS 真断点及共享核心；PyCharm 已验证插件加载，Python 调试尚待验证。变量与完整调用栈尚未接入 JetBrains，其他产品尚未逐一验证。VS Code 的现有调试能力保持不变。
 
 开发入口：`npm run test:engine`、`npm run build:jetbrains`、`npm run smoke:jetbrains`。架构与证据见 [Stage 04](docs/implementation/stage-04.md)，可运行示例见 [共享核心示例](examples/stage-04-shared-core/README.md)。
 

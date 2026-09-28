@@ -10,11 +10,17 @@ location to a real breakpoint and updates the reading path from the actual call 
 > **Project status:** active prototype. The current release targets VS Code with Python and Node debugging;
 > APIs and stored workspace data may change before a stable release.
 
+## Guided exploration from purpose to pause
+
+The local `0.2.4-preview` starts code questions with the feature's purpose, responsibility and place in the project before following a focused source path. A debugger pause separates source-based clues from observed runtime facts and offers three editable follow-up prompts: role, mechanism and next verification. The user chooses when to send or step; missing variables and stack frames are never invented. Try the [Stage 05 checkout example](examples/stage-05-guided-depth/user_code/README.md). The Marketplace submission under review is still `0.2.3-preview`.
+
+A compact code-organization diagram sits beside the route answer. It groups only source files located for the current question by directory; clicking a file opens source. Its connectors mean containment, never calls or runtime execution.
+
 ## 0.2.0: shared core and JetBrains preview
 
 The free JetBrains preview has been [submitted to Marketplace for review](https://plugins.jetbrains.com/plugin/34438-code-cat) and is not public yet. Until approval, follow the [local installation guide](plugins/jetbrains/README.md); check the Marketplace page for current availability.
 
-Both hosts reuse the conversation core and UI. WebStorm 2025.1 has been tested with a real TS breakpoint and JCEF evidence rendering. JetBrains variable capture and full stacks remain unsupported. See the [installation guide](plugins/jetbrains/README.md).
+Both hosts reuse the conversation core and UI. WebStorm 2025.1 has been tested with a real TS breakpoint and JCEF evidence rendering. A separate PyCharm 2026.1 local build has been tested for plugin loading and JCEF host creation; Python breakpoints remain unverified. JetBrains variable capture and full stacks remain unsupported. See the [installation guide](plugins/jetbrains/README.md).
 
 ## 0.1.9: reusable debugger entry points in history
 
@@ -218,7 +224,11 @@ code location** with its file, exact line, and the reason it is the best startin
    mode.
 3. For a code-path question, read the initial answer and its **Core code location**. Select
    **Open code** to inspect the exact source line, or deepen the **Path map** one location at a
-   time.
+   time. Each revealed stop states the module's **responsibility** and how it **connects to the
+   previous stop** — who calls whom, where the data comes from, which boundary is crossed. Both
+   are model inferences and stay separate from debugger evidence; the related code organization
+   map labels each file with the same responsibility, falling back to the stop title when the
+   model did not provide one.
 4. If you want to observe the process, select **Use a breakpoint to follow this**. Code Cat places
    a temporary teaching breakpoint at the core location and starts guided debugging. The
    **Path map**, **Call Stack**, and **Variables** surfaces then update from the debugging state;
@@ -377,25 +387,17 @@ model response:
 
 ## IDE support and repository layout
 
-The working prototype currently supports **VS Code only**. PyCharm support should stay in
-this repository rather than starting a separate product repository: the project index,
-route/session domain model, AI prompts, redaction rules, and IDE-neutral message contracts can
-be shared, while each IDE keeps its own adapter and UI package.
-
-A future cross-IDE layout can evolve toward:
+The working prototype includes VS Code and an experimental JetBrains host in one repository. The project index, conversation model, prompts, and evidence rules are shared, while each IDE owns its adapter.
 
 ```text
-packages/core/             shared Python indexing, routes, sessions, and tutor contracts
-packages/vscode-extension/ current VS Code/debugpy adapter and Webview UI
-packages/jetbrains-plugin/ future PyCharm debugger adapter and JetBrains UI
+packages/core/             IDE-neutral conversations, indexing, prompts and evidence rules
+packages/ui/               shared conversation UI
+packages/engine/           local process protocol for JetBrains
+src/                       VS Code host
+plugins/jetbrains/          JetBrains host and local packages
 ```
 
-Do not create the PyCharm package until the shared contracts have stabilized in the VS Code
-vertical slice. JetBrains plugins use a different SDK, build system, debugger APIs, and UI
-toolkit, so sharing the whole extension implementation would create more coupling than reuse.
-If publishing, release automation, or contributor ownership later diverges substantially, the
-JetBrains package can then be split into its own repository without changing the shared
-protocol boundary.
+JetBrains packages are built separately for verified IDE build branches. PyCharm plugin loading has been verified; its Python debugger path still needs a real pause test.
 
 ## Architecture notes
 
@@ -433,7 +435,7 @@ For optional rendered UI verification, compile with `npm run compile`, then run 
 
 `packages/core` owns conversations, teaching prompts, model protocols and evidence rules; `packages/ui` provides the shared conversation UI. VS Code remains in `src`. The experimental JetBrains host in `plugins/jetbrains` runs `packages/engine` through private stdio and stores credentials in PasswordSafe.
 
-The preview targets WebStorm 2025.1 (build 251). A real TypeScript source-map breakpoint has been tested. It captures the top pause location and source; variables and full stacks are not implemented in this host. Other JetBrains products and debuggers are not yet verified. See the [installation guide](plugins/jetbrains/README.md), [design record](docs/implementation/stage-04.md), and [runnable example](examples/stage-04-shared-core/README.md).
+Separate local preview packages target WebStorm 2025.1 (build 251) and PyCharm 2026.1 (build 261). A real TypeScript source-map breakpoint has been tested in WebStorm; PyCharm plugin loading has been tested, while Python breakpoints have not. The host captures the top pause location and source; variables and full stacks are not implemented. Other JetBrains products and debuggers are not yet verified. See the [installation guide](plugins/jetbrains/README.md), [design record](docs/implementation/stage-04.md), and [runnable example](examples/stage-04-shared-core/README.md).
 
 Build with `npm run build:jetbrains`; validate with `npm run test:engine` and `npm run smoke:jetbrains`. The native build uses a locally installed IDE SDK (`CODE_CAT_JETBRAINS_HOME`), JDK 21, Python 3 and Node.js 20+.
 
