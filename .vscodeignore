@@ -1,6 +1,8 @@
 .git/**
 .gitignore
 .vscode/**
+.github/**
+.editorconfig
 docs/**
 examples/**
 scripts/**
@@ -14,6 +16,11 @@ plugins/**
 packages/*/src/**
 packages/*/tsconfig.json
 packages/engine/**
+
+# 贡献者文档不随扩展分发（README.md 与 CHANGELOG.md 保留，供扩展详情页展示）
+CONTEXT.md
+AGENTS.md
+CONTRIBUTING.md
 
 verification-*/
 *.vsix
