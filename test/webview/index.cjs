@@ -118,10 +118,17 @@ async function run() {
     await page.locator('.observation-evidence > summary').click();
     await page.waitForFunction(() => document.querySelector('.observation-evidence').open);
     await page.locator('#question').fill('那异常会被谁处理？');
+    assert.equal(await page.locator('#locate').isDisabled(), false, 'a filled draft enables the send button');
+    assert.equal(await page.locator('#locate .send-arrow').evaluate((el) => getComputedStyle(el).cursor), 'pointer', 'an enabled send button keeps the pointer cursor');
     state = { ...state, requestKind: 'question', requestPending: true, busyMessage: '正在思考' };
     await send();
     assert.equal(await page.locator('#question').isEnabled(), true, 'draft stays editable while waiting');
     assert.equal(await page.locator('#locate').isDisabled(), true, 'parallel sends are blocked');
+    // 输入框整体读作文本框：内边距与 meta 行也要给输入光标，按钮各按自己的状态走。
+    assert.equal(await page.locator('#composer-inner').evaluate((el) => getComputedStyle(el).cursor), 'text', 'the whole composer reads as a text field');
+    assert.equal(await page.locator('.composer-mode').evaluate((el) => getComputedStyle(el).cursor), 'text', 'the hint row inherits the text cursor');
+    assert.equal(await page.locator('.composer-meta').evaluate((el) => getComputedStyle(el).cursor), 'text', 'the empty area of the hint row inherits the text cursor');
+    assert.equal(await page.locator('#locate').evaluate((el) => getComputedStyle(el).cursor), 'default', 'a disabled send button keeps the default cursor');
     assert.equal(await page.locator('.observation-evidence').evaluate((el) => el.open), true, 'evidence expansion survives state updates');
     assert.equal(await page.locator('.observation').isVisible(), true, 'waiting does not replace evidence');
     // 上一条还没结束时又提问：提示必须可见、不算错误、并且把没发出去的提问放回输入框。

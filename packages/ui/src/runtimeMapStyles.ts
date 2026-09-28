@@ -579,6 +579,10 @@ export const runtimeMapStyles = String.raw`
     }
     .composer-inner:focus-within { border-color: var(--cc-accent); box-shadow: 0 0 0 3px var(--cc-accent-wash); }
     .composer-inner.busy { background: var(--cc-surface); }
+    /* 整个输入框都读作文本框：悬停在内边距与 meta 行上也给输入光标，只有按钮恢复指针。 */
+    .composer-inner { cursor: text; }
+    .composer-inner button { cursor: pointer; }
+    .composer-inner button:disabled { cursor: default; }
     .composer textarea {
       display: block;
       width: 100%;
