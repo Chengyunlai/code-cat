@@ -41,7 +41,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 
 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`。构建脚本从这里读取，并用它生成 zip 文件名——改一处即可，不要再手改脚本里的版本串。
 
-版本号必须严格大于线上最新版，否则 Marketplace 拒绝。该插件启用了 semver 校验，所以 `0.2.8-preview` 这种「正式号 + 预发布标签」的写法是合法的，排序也符合直觉（`0.2.8-preview` > `0.2.7-preview`）。注意 semver 里预发布版低于同号正式版：`0.2.5-preview` < `0.2.5`。
+版本号必须严格大于线上最新版，否则 Marketplace 拒绝。该插件启用了 semver 校验，所以 `0.2.9-preview` 这种「正式号 + 预发布标签」的写法是合法的，排序也符合直觉（`0.2.9-preview` > `0.2.8-preview`）。注意 semver 里预发布版低于同号正式版：`0.2.5-preview` < `0.2.5`。
 
 ### 构建
 
@@ -50,7 +50,7 @@ npm run build:jetbrains                                              # WebStorm 
 CODE_CAT_JETBRAINS_HOME=/Applications/PyCharm.app/Contents npm run build:jetbrains   # PyCharm 261
 ```
 
-产物在 `plugins/jetbrains/build/`，文件名带版本和目标，例如 `code-cat-jetbrains-0.2.8-preview-webstorm-251.zip`。
+产物在 `plugins/jetbrains/build/`，文件名带版本和目标，例如 `code-cat-jetbrains-0.2.9-preview-webstorm-251.zip`。
 
 ### 上传：命令行（推荐，更新频繁时最省事）
 
@@ -58,7 +58,7 @@ CODE_CAT_JETBRAINS_HOME=/Applications/PyCharm.app/Contents npm run build:jetbrai
 
 ```bash
 PUBLISH_TOKEN=perm:xxxx npm run publish:jetbrains -- \
-  plugins/jetbrains/build/code-cat-jetbrains-0.2.8-preview-webstorm-251.zip
+  plugins/jetbrains/build/code-cat-jetbrains-0.2.9-preview-webstorm-251.zip
 ```
 
 加 `--channel preview` 发到 preview 通道；加 `--dry-run` 只打印将要发送的内容。脚本会在上传前拉取线上版本列表，版本没变大或该版本已存在时直接拒绝，不会白跑一次审核。
@@ -68,7 +68,7 @@ PUBLISH_TOKEN=perm:xxxx npm run publish:jetbrains -- \
 ```bash
 curl -i --header "Authorization: Bearer perm:xxxx" \
   -F pluginId=34438 \
-  -F file=@plugins/jetbrains/build/code-cat-jetbrains-0.2.8-preview-webstorm-251.zip \
+  -F file=@plugins/jetbrains/build/code-cat-jetbrains-0.2.9-preview-webstorm-251.zip \
   -F channel= \
   https://plugins.jetbrains.com/api/updates/upload
 ```

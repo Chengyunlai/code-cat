@@ -64,7 +64,7 @@ Route answers persist their RoutePlan on the assistant message. Historical debug
 
 ## Stage 04 · 共享核心 / JetBrains
 
-Stage 05 的高层到现场探索见 `docs/implementation/stage-05-guided-depth.md` 和 `examples/stage-05-guided-depth/`。本地测试包为 `0.2.8-preview`；Marketplace 公开的 `0.2.3-preview` 不含此改动。共享提示词先解释作用、职责与边界，再进入最小代码路径；暂停 UI 将路径线索与真实观察分开，提供可编辑的作用/机制/验证追问。真实暂停与未采集数据的证据边界不变。此阶段的测试、基线和工作树状态以阶段记录中的实测结果为准。
+Stage 05 的高层到现场探索见 `docs/implementation/stage-05-guided-depth.md` 和 `examples/stage-05-guided-depth/`。本地测试包的当前版本见本文「版本与发布状态」一节；Marketplace 公开的 `0.2.3-preview` 不含此改动。共享提示词先解释作用、职责与边界，再进入最小代码路径；暂停 UI 将路径线索与真实观察分开，提供可编辑的作用/机制/验证追问。真实暂停与未采集数据的证据边界不变。此阶段的测试、基线和工作树状态以阶段记录中的实测结果为准。
 
 PyCharm 261 引擎启动顺序和错误诊断修复使用本地 `0.2.5-preview` 包；`0.2.4-preview` 的通用“操作未完成”提示缺少真实错误原因。随后因配置弹窗暴露机器专属 Node 路径，将运行时自动发现并升至 `0.2.6-preview`；Marketplace 审核版本未变。共享的阅读路径职责/关系改动把本地测试包升至 `0.2.7-preview`；VS Code 包版本不随该共享改动递增，仍以 `--force` 覆盖安装同名 `0.2.4` 包。
 
@@ -114,6 +114,6 @@ Marketplace 免费预览版的发布资料位于 plugins/jetbrains/MARKETPLACE.m
 
 ## 版本与发布状态
 
-两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.5`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.8-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
+两个安装包的版本号各有唯一来源：VS Code 取 `package.json` 的 `version`（当前 `0.2.6`），JetBrains 取 `plugins/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<version>`（当前 `0.2.9-preview`），构建脚本从这里读取并用于 zip 文件名，不要再手改脚本里的版本串。
 
 JetBrains Marketplace：pluginId `34438`，pluginXmlId `dev.codecat`，线上 `0.2.3-preview` 已通过审核并公开，兼容范围只有 `251.*`（2025.1 系列），因此 PyCharm / WebStorm 2026.1 装不上。每个新版本都要人工审核，通常 3–4 个工作日，没有通道豁免。上传后只有兼容范围可改，描述与 change notes 必须在上传前定稿。发布流程、接口与自查清单见 `plugins/jetbrains/MARKETPLACE.md`；命令行上传用 `npm run publish:jetbrains`（`scripts/publish-jetbrains.py`，需要 `PUBLISH_TOKEN`）。

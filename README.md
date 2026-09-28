@@ -8,7 +8,7 @@ Code Cat 是一个面向 Python、TypeScript 和 JavaScript 项目的 AI 代码�
 
 ## 从作用到现场的连续探索
 
-本地 `0.2.8-preview` 先从问题涉及的功能**为何存在、负责什么、位于哪一步**建立背景，再沿最相关的源码路径深入。真实暂停卡片把源码线索与运行观察分开，并提供“先看作用”“再看机制”“验证下一步”三个可编辑追问入口；用户决定何时发送与单步。没有采集到的变量或调用栈不会被当成事实。可从 [Stage 05 结账示例](examples/stage-05-guided-depth/user_code/README.md)体验这条路径。Marketplace 公开的 `0.2.3-preview` 尚不包含这些改动，且只兼容 2025.1 系列。
+本地 `0.2.9-preview` 先从问题涉及的功能**为何存在、负责什么、位于哪一步**建立背景，再沿最相关的源码路径深入。真实暂停卡片把源码线索与运行观察分开，并提供“先看作用”“再看机制”“验证下一步”三个可编辑追问入口；用户决定何时发送与单步。没有采集到的变量或调用栈不会被当成事实。可从 [Stage 05 结账示例](examples/stage-05-guided-depth/user_code/README.md)体验这条路径。Marketplace 公开的 `0.2.3-preview` 尚不包含这些改动，且只兼容 2025.1 系列。
 
 回答旁的**相关代码组织图**按目录展示这次问题已定位的文件，并在文件下方标出这个文件或模块**负责什么**（模型给出的职责判断；模型未给出时回退为阅读标题）。点击文件可打开源码，按需展开更多文件。图的连线只表示目录包含关系；执行路径和真实暂停在各自的视图中呈现。
 
@@ -20,7 +20,7 @@ Code Cat 是一个面向 Python、TypeScript 和 JavaScript 项目的 AI 代码�
 
 ## 0.2.0：共享核心与 JetBrains 预览版
 
-JetBrains 免费预览版已在 [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34438-code-cat) 公开，线上版本 `0.2.3-preview` 只兼容 2025.1 系列。最新本地测试包为 `0.2.8-preview`，会自动查找 Node.js 运行时；按 [JetBrains 指南](plugins/jetbrains/README.md) 从本地安装可体验最新改动。发布与更新流程见 [MARKETPLACE.md](plugins/jetbrains/MARKETPLACE.md)。
+JetBrains 免费预览版已在 [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/34438-code-cat) 公开，线上版本 `0.2.3-preview` 只兼容 2025.1 系列。最新本地测试包为 `0.2.9-preview`，会自动查找 Node.js 运行时；按 [JetBrains 指南](plugins/jetbrains/README.md) 从本地安装可体验最新改动。发布与更新流程见 [MARKETPLACE.md](plugins/jetbrains/MARKETPLACE.md)。
 
 两端复用同一个会话核心和聊天界面。WebStorm 2025.1 已验证 TS 真断点、源码观察及实际 JCEF 页面呈现。PyCharm 2026.1 有单独的本地安装包，已验证插件加载和 JCEF 宿主创建；Python 真断点尚未验证。JetBrains 的变量与完整调用栈仍待接入。安装见 [JetBrains 指南](plugins/jetbrains/README.md)。
 
