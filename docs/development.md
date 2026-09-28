@@ -138,7 +138,8 @@ gh release upload v0.2.9 code-cat-0.2.9.vsix <jetbrains zips>
 - `--verify-tag` 保证标签已存在，不会让 gh 从默认分支凭空建一个。
 - Release notes 用 `--notes-file` 传，避免 shell 转义；正文按 CHANGELOG 对应小节改写成用户可读版本，并加一节「安装」。
 - Release 必须挂构建产物：VS Code 扩展未上架 Marketplace，JetBrains 的本地预览包也不在任何渠道，Release 附件是唯一的下载入口。
-- 标签指向「该版本首次出现在 `package.json` 的提交」。`0.1.5` 与 `0.1.7`–`0.2.2` 从未单独提交，没有对应标签；不要为它们造标签。
+- 标签指向该版本的发布提交：用「该版本首次出现在 `package.json` 的提交」定位，允许再往后带上同一版本的补充文档提交。已发布的标签不要移动。
+- `0.1.5` 与 `0.1.7`–`0.2.2` 从未单独提交，没有对应标签；不要为它们造标签。
 - 不为历史版本补建 GitHub Release：`gh release create` 无法回填发布日期，十几个历史版本会全部显示成同一天，比只保留标签更误导。
 - `CHANGELOG.md` 的版本标题统一不带链接——部分版本有标签、部分没有，只给有标签的加链接会不一致。
 
